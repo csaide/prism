@@ -129,7 +129,7 @@ units:
 coverage:
 	@bash ./dist/bin/print.sh "Running tests with coverage"
 	@mkdir -p target/coverage/
-	@cargo tarpaulin -o Html --output-dir target/coverage/
+	@cargo +nightly tarpaulin -o Html --output-dir target/coverage/ --run-types Tests,Doctests
 
 license:
 	@bash ./dist/bin/print.sh "Verifying licensing"

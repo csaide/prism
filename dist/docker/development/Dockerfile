@@ -22,6 +22,7 @@ RUN rustup component add rust-std \
     && rustup component add rust-src \
     && rustup target add x86_64-unknown-linux-gnu \
     && rustup target add aarch64-unknown-linux-gnu \
+    && rustup toolchain install nightly-x86_64-unknown-linux-gnu \
     && cargo install cargo-tarpaulin \
     && rustup update
 
