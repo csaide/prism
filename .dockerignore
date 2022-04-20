@@ -1,0 +1,19 @@
+# We are using a whitelist instead of blacklist here so exclude all.
+**
+
+# Cargo configuration.
+!.cargo/*
+!Cargo.toml
+!Cargo.lock
+
+# Build configuration.
+!dist/bin/*
+!dist/docker/development/.bashrc
+!Makefile
+!build.rs
+
+# Source code.
+!src/*
+!src/**
+!proto/*
+!proto/**
