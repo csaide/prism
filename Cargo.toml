@@ -7,6 +7,12 @@ edition = "2021"
 
 [dependencies]
 exitcode = "~1.1.2"
+slog = { version = "2.7", features = ["nested-values"]}
+slog-async = { version = "2.7", features = ["nested-values"] }
+slog-json = { version = "2.4", features = ["nested-values"] }
+slog-term = { version = "2.8", features = ["nested-values"] }
+structopt = "0.3"
+thiserror = "1.0"
 tokio = { version = "~1.17.0", features = ["rt-multi-thread", "macros"] }
 
 [lib]
