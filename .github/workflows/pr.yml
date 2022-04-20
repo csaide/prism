@@ -1,0 +1,79 @@
+# (c) Copyright 2021-2022 Christian Saide
+# SPDX-License-Identifier: GPL-3.0
+
+name: pr
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: stable
+  TOOLCHAIN_PROFILE: minimal
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: ${{ env.TOOLCHAIN_PROFILE }}
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          override: true
+          components: rustfmt, clippy
+      - name: Cache
+        uses: Swatinem/rust-cache@v1
+      - name: Check
+        run: make fmt lint license
+
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: ${{ env.TOOLCHAIN_PROFILE }}
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          override: true
+      - name: Cache
+        uses: Swatinem/rust-cache@v1
+      - name: Coverage
+        uses: actions-rs/tarpaulin@v0.1
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v1.0.2
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+      - name: Archive results
+        uses: actions/upload-artifact@v1
+        with:
+          name: code-coverage-report
+          path: cobertura.xml
+
+  build:
+    name: build (linux aarch64/x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: ${{ env.TOOLCHAIN_PROFILE }}
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          override: true
+      - name: Install compilers
+        run: sudo apt-get update -yqq && sudo apt-get install -yqq gcc gcc-aarch64-linux-gnu
+      - name: Cache
+        uses: Swatinem/rust-cache@v1
+      - name: Build
+        run: make compile.linux
