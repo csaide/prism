@@ -13,7 +13,7 @@ pub struct Config {
     #[structopt(
         long = "log-level",
         short = "l",
-        env = "RIFT_LOG_LEVEL",
+        env = "PRISM_LOG_LEVEL",
         help = "The logging level to use.",
         long_help = "Selects the maximum logging level to log for all application logs.",
         default_value = "info",
@@ -26,7 +26,7 @@ pub struct Config {
     #[structopt(
         long = "log-json",
         short = "j",
-        env = "RIFT_LOG_JSON",
+        env = "PRISM_LOG_JSON",
         help = "Whether or not to log in JSON format.",
         long_help = "Sets whether or not to log in JSON format, when the `stdout` log handler is in use.",
         takes_value = false

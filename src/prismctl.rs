@@ -4,7 +4,7 @@
 use crate::log;
 
 use exitcode::ExitCode;
-use structopt::clap::{self, crate_version, ErrorKind};
+use structopt::clap::{crate_version, AppSettings};
 use structopt::StructOpt;
 
 const PRISMCTL: &str = "prismctl";
@@ -12,7 +12,7 @@ const PRISMCTL: &str = "prismctl";
 /// Overall primsd binary configuration.
 #[derive(Debug, Clone, StructOpt)]
 #[structopt(
-    global_settings = &[clap::AppSettings::DeriveDisplayOrder],
+    global_settings = &[AppSettings::DeriveDisplayOrder],
     author = "Christian Saide <me@csaide.dev>",
     about = "Manage a prismd instance or cluster.",
     version = crate_version!()
@@ -23,19 +23,9 @@ struct PrismctlConfig {
 }
 
 pub async fn run() -> ExitCode {
-    let setup_logger = log::default(PRISMCTL, crate_version!());
-    let cfg = match PrismctlConfig::from_args_safe() {
+    let cfg = match crate::base_config::<PrismctlConfig>(PRISMCTL) {
         Ok(cfg) => cfg,
-        Err(err)
-            if err.kind == ErrorKind::HelpDisplayed || err.kind == ErrorKind::VersionDisplayed =>
-        {
-            println!("{}", err.message);
-            return exitcode::USAGE;
-        }
-        Err(err) => {
-            crit!(setup_logger, "Failed to parse provided configuration."; "error" => err.to_string());
-            return exitcode::CONFIG;
-        }
+        Err(code) => return code,
     };
 
     let root_logger = log::new(&cfg.log_config, PRISMCTL, crate_version!());

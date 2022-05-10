@@ -3,7 +3,6 @@
 
 //! The libprism library encapsulates all logic for prismd and prismctl applications.
 
-// macro usings
 #[macro_use]
 extern crate slog;
 
@@ -13,3 +12,26 @@ pub mod log;
 pub mod prismctl;
 /// Entrypoint logic for prismd.
 pub mod prismd;
+/// Datastore storage logic and implementations.
+pub mod store;
+
+use structopt::{
+    clap::{crate_version, ErrorKind},
+    StructOpt,
+};
+
+pub fn base_config<T>(bin: &'static str) -> Result<T, exitcode::ExitCode>
+where
+    T: StructOpt,
+{
+    let setup_logger = log::default(bin, crate_version!());
+    T::from_args_safe().map_err(|err| {
+        if err.kind == ErrorKind::HelpDisplayed || err.kind == ErrorKind::VersionDisplayed        {
+            println!("{}", err.message);
+            exitcode::USAGE
+        } else {
+            crit!(setup_logger, "Failed to parse provided configuration."; "error" => err.to_string());
+            exitcode::CONFIG
+        }
+    })
+}
