@@ -5,17 +5,11 @@ use std::array::TryFromSliceError;
 use std::result;
 use std::string::FromUtf8Error;
 
-use rkyv::de::deserializers::SharedDeserializeMapError;
-use rkyv::ser::serializers::{
-    AllocScratchError, CompositeSerializerError, SharedSerializeMapError,
-};
+use sled::CompareAndSwapError;
 use thiserror::Error;
 
 /// Custom Result wrapper to simplify usage.
 pub type Result<T> = result::Result<T, Error>;
-
-type SerializerError =
-    CompositeSerializerError<std::convert::Infallible, AllocScratchError, SharedSerializeMapError>;
 
 /// Represents errors interacting with a storage repository.
 #[derive(Debug, Error)]
@@ -32,22 +26,16 @@ pub enum Error {
         #[from]
         TryFromSliceError,
     ),
-    #[error("failed to serialize object: {0}")]
-    Serialize(
-        #[source]
-        #[from]
-        SerializerError,
-    ),
-    #[error("failed to deserialize object: {0}")]
-    Deserialize(
-        #[source]
-        #[from]
-        SharedDeserializeMapError,
-    ),
     #[error("failed to handle string data: {0}")]
     UTF8(
         #[source]
         #[from]
         FromUtf8Error,
+    ),
+    #[error("failed to swap values")]
+    CompareAndSwap(
+        #[source]
+        #[from]
+        CompareAndSwapError,
     ),
 }

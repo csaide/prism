@@ -3,62 +3,76 @@
 
 use std::marker::PhantomData;
 
-use rkyv::{de::deserializers::SharedDeserializeMap, Archive, Deserialize};
 use sled::Iter as SledIter;
 
-use super::{helpers::from_ivec_tuple, Error, Result};
+use super::{serde::Serializeable, Error, Result};
 
-pub struct Iter<T> {
+pub struct Iter<K, V> {
     inner: SledIter,
-    phantom: PhantomData<T>,
+    phantom_k: PhantomData<K>,
+    phantom_v: PhantomData<V>,
 }
 
-impl<T> From<SledIter> for Iter<T> {
+impl<K, V> From<SledIter> for Iter<K, V> {
     fn from(inner: SledIter) -> Self {
         Self {
             inner,
-            phantom: PhantomData,
+            phantom_k: PhantomData,
+            phantom_v: PhantomData,
         }
     }
 }
 
-impl<T> Iterator for Iter<T>
+impl<K, V> Iterator for Iter<K, V>
 where
-    T: Archive,
-    <T as Archive>::Archived: Deserialize<T, SharedDeserializeMap>,
+    K: Serializeable,
+    V: Serializeable,
 {
-    type Item = Result<(u64, T)>;
+    type Item = Result<(K, V)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let next = match self.inner.next()? {
             Ok(next) => next,
             Err(e) => return Some(Err(Error::from(e))),
         };
-        Some(from_ivec_tuple(next))
+        let key = match K::from_raw(next.0.as_ref()) {
+            Ok(key) => key,
+            Err(e) => return Some(Err(e)),
+        };
+        let value = match V::from_raw(next.1.as_ref()) {
+            Ok(value) => value,
+            Err(e) => return Some(Err(e)),
+        };
+        Some(Ok((key, value)))
     }
 }
 
-impl<T> DoubleEndedIterator for Iter<T>
+impl<K, V> DoubleEndedIterator for Iter<K, V>
 where
-    T: Archive,
-    <T as Archive>::Archived: Deserialize<T, SharedDeserializeMap>,
+    K: Serializeable,
+    V: Serializeable,
 {
     fn next_back(&mut self) -> Option<Self::Item> {
         let next = match self.inner.next_back()? {
             Ok(next) => next,
             Err(e) => return Some(Err(Error::from(e))),
         };
-        Some(from_ivec_tuple(next))
+        let key = match K::from_raw(next.0.as_ref()) {
+            Ok(key) => key,
+            Err(e) => return Some(Err(e)),
+        };
+        let value = match V::from_raw(next.1.as_ref()) {
+            Ok(value) => value,
+            Err(e) => return Some(Err(e)),
+        };
+        Some(Ok((key, value)))
     }
 }
 
 #[cfg(test)]
 #[cfg(not(tarpaulin_include))]
 mod tests {
-    use crate::store::{
-        helpers::to_bytes,
-        test_harness::{new_test_db, TestStruct},
-    };
+    use crate::store::test_harness::{new_test_db, TestStruct};
 
     use super::*;
 
@@ -69,15 +83,13 @@ mod tests {
             let data = db
                 .insert(
                     idx.to_be_bytes(),
-                    to_bytes::<TestStruct, 1024>(&TestStruct::new(idx + 1, idx + 2))
-                        .expect("failed to serialize value")
-                        .as_ref(),
+                    TestStruct::new(idx + 1, idx + 2).to_raw(),
                 )
                 .expect("failed to insert new value");
             assert!(data.is_none());
         }
 
-        let mut iter = Iter::<TestStruct>::from(db.iter());
+        let mut iter = Iter::<u64, TestStruct>::from(db.iter());
         for idx in 0..5 as u64 {
             let item = iter
                 .next()
@@ -96,15 +108,13 @@ mod tests {
             let data = db
                 .insert(
                     idx.to_be_bytes(),
-                    to_bytes::<TestStruct, 1024>(&TestStruct::new(idx + 1, idx + 2))
-                        .expect("failed to serialize value")
-                        .as_ref(),
+                    TestStruct::new(idx + 1, idx + 2).to_raw(),
                 )
                 .expect("failed to insert new value");
             assert!(data.is_none());
         }
 
-        let mut iter = Iter::<TestStruct>::from(db.iter());
+        let mut iter = Iter::<u64, TestStruct>::from(db.iter());
         let offset: u64 = 4;
         for cursor in 0..5 as u64 {
             let idx = offset - cursor;

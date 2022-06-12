@@ -3,41 +3,32 @@
 
 use std::{marker::PhantomData, ops::RangeBounds};
 
-use rkyv::{
-    de::deserializers::SharedDeserializeMap, ser::serializers::AllocSerializer, Archive,
-    Deserialize,
-};
 use sled::Tree;
 
-use super::{
-    helpers::{from_ivec, to_bytes},
-    Error, Iter, Key, Result,
-};
+use super::{serde::Serializeable, Batch, Error, Iter, Result, Subscriber};
 
-pub struct Store<K, V, const N: usize> {
+pub struct Store<K, V> {
     tree: Tree,
     phantom_k: PhantomData<K>,
     phantom_v: PhantomData<V>,
 }
 
-impl<K, V, const N: usize> Store<K, V, N>
+impl<K, V> Store<K, V>
 where
-    V: Archive,
-    <V as Archive>::Archived: Deserialize<V, SharedDeserializeMap>,
-    V: rkyv::Serialize<AllocSerializer<N>>,
-    K: Key,
+    V: Serializeable,
+    K: Serializeable,
 {
-    pub fn new(db: &sled::Db, name: &str) -> Result<Store<K, V, N>> {
-        let tree = db.open_tree(name).map_err(Error::from)?;
+    pub fn new(db: &sled::Db, name: &str) -> Result<Store<K, V>> {
+        let tree = db.open_tree(name)?;
         Ok(Store {
             tree,
-            phantom_v: PhantomData,
             phantom_k: PhantomData,
+            phantom_v: PhantomData,
         })
     }
 
     pub fn contains(&self, key: K) -> Result<bool> {
-        self.tree.contains_key(key.to_bytes()).map_err(Error::from)
+        self.tree.contains_key(key.to_raw()).map_err(Error::from)
     }
 
     pub fn len(&self) -> usize {
@@ -49,53 +40,123 @@ where
     }
 
     pub fn remove(&self, key: K) -> Result<Option<V>> {
-        match self.tree.remove(key.to_bytes()).map_err(Error::from)? {
-            Some(ivec) => from_ivec(ivec).map(Some),
+        match self.tree.remove(key.to_raw())? {
+            Some(ivec) => V::from_raw(ivec.as_ref()).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub fn apply_batch(&self, batch: Batch<K, V>) -> Result<()> {
+        self.tree
+            .apply_batch(batch.into_inner())
+            .map_err(Error::from)
+    }
+
+    pub fn clear(&self) -> Result<()> {
+        self.tree.clear().map_err(Error::from)
+    }
+
+    pub fn compare_and_swap(&self, key: K, old: Option<V>, new: Option<V>) -> Result<()> {
+        self.tree
+            .compare_and_swap(
+                key.to_raw(),
+                old.map(|val| val.to_raw()),
+                new.map(|val| val.to_raw()),
+            )?
+            .map_err(Error::from)
+    }
+
+    pub fn update_and_fetch<F>(&self, key: K, mut f: F) -> Result<Option<V>>
+    where
+        F: FnMut(Option<&[u8]>) -> Option<V>,
+    {
+        match self
+            .tree
+            .update_and_fetch(key.to_raw(), |val| f(val).map(|val| val.to_raw()))?
+        {
+            Some(val) => Ok(Some(V::from_raw(val.as_ref())?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn fetch_and_update<F>(&self, key: K, mut f: F) -> Result<Option<V>>
+    where
+        F: FnMut(Option<&[u8]>) -> Option<V>,
+    {
+        match self
+            .tree
+            .fetch_and_update(key.to_raw(), |val| f(val).map(|val| val.to_raw()))?
+        {
+            Some(val) => Ok(Some(V::from_raw(val.as_ref())?)),
             None => Ok(None),
         }
     }
 
     pub fn insert(&self, key: K, value: &V) -> Result<Option<V>> {
-        let bytes = to_bytes(value)?;
+        let bytes = value.to_raw();
 
-        match self
-            .tree
-            .insert(key.to_bytes(), bytes.as_ref())
-            .map_err(Error::from)?
-        {
-            Some(ivec) => from_ivec(ivec).map(Some),
+        match self.tree.insert(key.to_raw(), bytes.as_ref())? {
+            Some(ivec) => V::from_raw(ivec.as_ref()).map(Some),
             None => Ok(None),
         }
     }
 
     pub fn get(&self, key: K) -> Result<Option<V>> {
-        match self.tree.get(key.to_bytes()).map_err(Error::from)? {
-            Some(ivec) => from_ivec(ivec).map(Some),
+        match self.tree.get(key.to_raw())? {
+            Some(ivec) => V::from_raw(ivec.as_ref()).map(Some),
             None => Ok(None),
         }
     }
 
-    pub fn iter(&self) -> Iter<V> {
+    pub fn iter(&self) -> Iter<K, V> {
         self.tree.iter().into()
     }
 
-    pub fn range<R>(&self, range: R) -> Iter<V>
+    pub fn range<R>(&self, range: R) -> Iter<K, V>
     where
         R: RangeBounds<K>,
     {
         use std::ops::Bound::*;
 
         let start = match range.start_bound() {
-            Included(start) => Included(start.to_bytes()),
-            Excluded(start) => Excluded(start.to_bytes()),
+            Included(start) => Included(start.to_raw()),
+            Excluded(start) => Excluded(start.to_raw()),
             Unbounded => Unbounded,
         };
         let end = match range.end_bound() {
-            Included(end) => Included(end.to_bytes()),
-            Excluded(end) => Excluded(end.to_bytes()),
+            Included(end) => Included(end.to_raw()),
+            Excluded(end) => Excluded(end.to_raw()),
             Unbounded => Unbounded,
         };
         self.tree.range((start, end)).into()
+    }
+
+    pub fn scan_prefix(&self, prefix: K) -> Iter<K, V> {
+        self.tree.scan_prefix(prefix.to_raw()).into()
+    }
+
+    pub fn watch_prefix(&self, prefix: K) -> Subscriber<K, V> {
+        self.tree.watch_prefix(prefix.to_raw()).into()
+    }
+
+    pub fn first(&self) -> Result<Option<(K, V)>> {
+        match self.tree.first()? {
+            Some((key, value)) => Ok(Some((
+                K::from_raw(key.as_ref())?,
+                V::from_raw(value.as_ref())?,
+            ))),
+            None => Ok(None),
+        }
+    }
+
+    pub fn last(&self) -> Result<Option<(K, V)>> {
+        match self.tree.last()? {
+            Some((key, value)) => Ok(Some((
+                K::from_raw(key.as_ref())?,
+                V::from_raw(value.as_ref())?,
+            ))),
+            None => Ok(None),
+        }
     }
 }
 
@@ -111,7 +172,7 @@ mod tests {
         let tree = "store-test";
         let db = new_test_db().expect("failed to create test database");
 
-        let store: Store<u64, TestStruct, 16> =
+        let store: Store<u64, TestStruct> =
             Store::new(&db, tree).expect("failed to create new store");
 
         let first = TestStruct { a: 1, b: 1 };
@@ -153,7 +214,7 @@ mod tests {
         let tree = "store-test";
         let db = new_test_db().expect("failed to create test database");
 
-        let store: Store<u64, TestStruct, 16> =
+        let store: Store<u64, TestStruct> =
             Store::new(&db, tree).expect("failed to create new store");
 
         let first = TestStruct { a: 1, b: 1 };
@@ -197,7 +258,7 @@ mod tests {
         let tree = "store-test";
         let db = new_test_db().expect("failed to create test database");
 
-        let store: Store<u64, TestStruct, 16> =
+        let store: Store<u64, TestStruct> =
             Store::new(&db, tree).expect("failed to create new store");
 
         let first = TestStruct { a: 1, b: 1 };

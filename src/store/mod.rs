@@ -2,16 +2,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 mod backend;
+mod batch;
 mod error;
-mod helpers;
+mod event;
 mod iter;
-mod key;
+mod serde;
+mod subscriber;
 
 #[cfg(test)]
 #[cfg(not(tarpaulin_include))]
 mod test_harness;
 
 pub use backend::Store;
+pub use batch::Batch;
 pub use error::{Error, Result};
+pub use event::Event;
 pub use iter::Iter;
-pub use key::Key;
+pub use subscriber::Subscriber;
