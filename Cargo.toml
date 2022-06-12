@@ -7,7 +7,9 @@ edition = "2021"
 
 [dependencies]
 exitcode = "~1.1.2"
-rkyv = { version = "0.7", features = ["validation"] }
+prost = "0.10"
+prost-types = "0.10"
+rand = "0.8"
 sled = "0.34"
 slog = { version = "2.7", features = ["nested-values"]}
 slog-async = { version = "2.7", features = ["nested-values"] }
@@ -15,10 +17,17 @@ slog-json = { version = "2.4", features = ["nested-values"] }
 slog-term = { version = "2.8", features = ["nested-values"] }
 structopt = "0.3"
 thiserror = "1.0"
-tokio = { version = "1.18.1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.19", features = ["rt-multi-thread", "macros", "time", "sync"] }
+tonic = "0.7"
+tonic-reflection = "0.4"
+tonic-health = "0.6"
+uuid = { version = "1.1", features = ["v4"] }
 
 [dev-dependencies]
-scopeguard = "1.1"
+tokio-test = "0.4"
+
+[build-dependencies]
+tonic-build = "0.7"
 
 [lib]
 name = "libprism"

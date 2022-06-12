@@ -12,6 +12,12 @@ pub mod log;
 pub mod prismctl;
 /// Entrypoint logic for prismd.
 pub mod prismd;
+/// Raft implementation.
+pub mod raft;
+/// gRPC implementation details.
+pub mod rpc;
+/// Serialization logic for converting to/from byte slices.
+pub mod serde;
 /// Datastore storage logic and implementations.
 pub mod store;
 

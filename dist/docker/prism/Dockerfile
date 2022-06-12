@@ -7,7 +7,7 @@ WORKDIR /opt/prism
 
 ARG TARGETPLATFORM
 
-ENV BUILD_DEPS "upx-ucl"
+ENV BUILD_DEPS "upx-ucl cmake"
 ENV PROBE_VERSION "v0.4.6"
 RUN apt-get update \
     && apt-get upgrade -yqq \

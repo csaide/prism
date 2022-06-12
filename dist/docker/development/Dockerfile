@@ -7,7 +7,7 @@ FROM rust:1-bullseye as rust
 ARG DEBIAN_FRONTEND=noninteractive
 
 # Install dev-tooling
-ENV TOOL_DEPS "curl wget telnet netcat net-tools dnsutils vim-tiny bash-completion sudo jq"
+ENV TOOL_DEPS "curl wget telnet netcat cmake net-tools dnsutils vim-tiny bash-completion sudo jq"
 ENV COMPILER_DEPS "upx-ucl gcc-aarch64-linux-gnu"
 RUN apt-get update \
     && apt-get upgrade -yqq \
