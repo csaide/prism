@@ -1,7 +1,7 @@
 {
     "build": {
         "dockerfile": "./dist/docker/development/Dockerfile",
-        "context": ".",
+        "context": "."
     },
     "runArgs": [
         "--cap-add=SYS_PTRACE",
@@ -21,7 +21,7 @@
     "workspaceMount": "source=/home/csaide/workspace/csaide/prism,target=/opt/prism,type=bind,consistency=cached",
     "workspaceFolder": "/opt/prism",
     "extensions": [
-        "matklad.rust-analyzer",
+        "rust-lang.rust-analyzer",
         "serayuzgur.crates",
         "ms-azuretools.vscode-docker",
         "eriklynd.json-tools",

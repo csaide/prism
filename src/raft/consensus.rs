@@ -16,19 +16,14 @@ use super::{ElectionResult, Error, Log, Metadata, Peer, Result, State};
 pub struct ConsensusMod<P> {
     logger: slog::Logger,
 
-    id: String,
-    peers: Arc<Mutex<Vec<P>>>,
-
     // Persistent state.
-    metadata: Arc<Metadata>,
+    metadata: Arc<Metadata<P>>,
     log: Arc<Log>,
 
-    // Volatile general data.
     heartbeat_tx: Arc<Sender<()>>,
     heartbeat_rx: Receiver<()>,
-
-    next_idx: Arc<Mutex<Vec<i64>>>,
-    match_idx: Arc<Mutex<Vec<i64>>>,
+    commit_tx: mpsc::Sender<()>,
+    commit_rx: Arc<Mutex<mpsc::Receiver<()>>>,
 }
 
 impl<P> ConsensusMod<P>
@@ -43,24 +38,21 @@ where
     ) -> Result<ConsensusMod<P>> {
         // Note fix this later and persist it.
         let (heartbeat_tx, heartbeat_rx) = watch::channel(());
+        let (commit_tx, commit_rx) = mpsc::channel(100);
         let log = Log::new(db)?;
-        let next_idx = Arc::new(Mutex::new(Vec::default()));
-        let match_idx = Arc::new(Mutex::new(Vec::default()));
         Ok(ConsensusMod {
             logger: logger.new(o!("id" => id.clone())),
-            id,
-            peers: Arc::new(Mutex::new(peers)),
-            metadata: Arc::new(Metadata::new()),
+            metadata: Arc::new(Metadata::new(id, peers)),
             log: Arc::new(log),
             heartbeat_tx: Arc::new(heartbeat_tx),
             heartbeat_rx,
-            next_idx,
-            match_idx,
+            commit_tx,
+            commit_rx: Arc::new(Mutex::new(commit_rx)),
         })
     }
 
     pub fn append_peer(&self, peer: P) {
-        self.peers.lock().unwrap().push(peer);
+        self.metadata.peers.lock().unwrap().push(peer);
     }
 
     pub fn is_leader(&self) -> bool {
@@ -68,39 +60,6 @@ where
     }
     pub fn dump(&self) -> Result<Vec<Entry>> {
         self.log.dump()
-    }
-
-    fn transition_follower(&self, new_term: Option<i64>) {
-        self.metadata.set_state(State::Follower);
-        if let Some(new_term) = new_term {
-            self.metadata.set_current_term(new_term);
-        }
-        self.metadata.set_voted_for(None);
-    }
-
-    fn transition_candidate(&self) -> i64 {
-        self.metadata.set_state(State::Candidate);
-        self.metadata.set_voted_for(Some(self.id.clone()));
-        self.metadata.incr_current_term()
-    }
-
-    fn transition_leader(&self) -> Result<()> {
-        self.metadata.set_state(State::Leader);
-        let (last_log_idx, _) = self.log.last_log_idx_and_term()?;
-
-        let peers = self.peers.lock().unwrap().len();
-
-        let mut next_idx = self.next_idx.lock().unwrap();
-        next_idx.clear();
-
-        let mut match_idx = self.match_idx.lock().unwrap();
-        match_idx.clear();
-
-        for _ in 0..peers {
-            next_idx.push(last_log_idx);
-            match_idx.push(0);
-        }
-        Ok(())
     }
 
     async fn follower_loop(&mut self) {
@@ -127,13 +86,13 @@ where
         };
 
         let request = VoteRequest {
-            candidate_id: self.id.clone(),
+            candidate_id: self.metadata.id.clone(),
             last_log_idx,
             last_log_term,
             term: *self.metadata.current_term.read().unwrap(),
         };
 
-        let peers = self.peers.lock().unwrap();
+        let peers = self.metadata.peers.lock().unwrap();
         let (tx, mut rx) = mpsc::channel::<Result<VoteResponse>>(peers.len());
         for peer in &*peers {
             let mut cli = peer.clone();
@@ -165,7 +124,7 @@ where
                     self.logger,
                     "Encountered response with newer term, bailing out."
                 );
-                self.transition_follower(Some(resp.term));
+                self.metadata.transition_follower(Some(resp.term));
                 return ElectionResult::Failed;
             } else if resp.term < saved_term {
                 debug!(
@@ -182,15 +141,22 @@ where
                 }
             }
         }
-        self.transition_follower(None);
+        self.metadata.transition_follower(None);
         ElectionResult::Failed
     }
 
     async fn leader_loop(&self) {
         debug!(self.logger, "Started leader loop!");
-        if let Err(e) = self.transition_leader() {
+        let (last_log_idx, _) = match self.log.last_log_idx_and_term() {
+            Ok(tuple) => tuple,
+            Err(e) => {
+                error!(self.logger, "Failed to retrieve last log index."; "error" => e.to_string());
+                return;
+            }
+        };
+        if let Err(e) = self.metadata.transition_leader(last_log_idx) {
             error!(self.logger, "Failed to transition self to leader."; "error" => e.to_string());
-            self.transition_follower(None);
+            self.metadata.transition_follower(None);
             return;
         }
 
@@ -199,9 +165,9 @@ where
         while self.metadata.is_leader() {
             let saved_term = *self.metadata.current_term.read().unwrap();
 
-            let peers = self.peers.lock().unwrap();
-            let mut next_indexes = self.next_idx.lock().unwrap();
-            let mut match_indexes = self.match_idx.lock().unwrap();
+            let peers = self.metadata.peers.lock().unwrap();
+            let mut next_indexes = self.metadata.next_idx.lock().unwrap();
+            let mut match_indexes = self.metadata.match_idx.lock().unwrap();
 
             let (tx, mut rx) =
                 mpsc::channel::<(usize, usize, i64, Result<AppendResponse>)>(peers.len());
@@ -230,7 +196,7 @@ where
 
                 let req = AppendRequest {
                     leader_commit_idx: *self.metadata.commit_idx.read().unwrap(),
-                    leader_id: self.id.clone(),
+                    leader_id: self.metadata.id.clone(),
                     prev_log_idx,
                     prev_log_term,
                     term: saved_term,
@@ -261,7 +227,7 @@ where
                     return;
                 }
                 if resp.term > saved_term {
-                    self.transition_follower(Some(resp.term));
+                    self.metadata.transition_follower(Some(resp.term));
                     return;
                 }
                 if resp.term < saved_term {
@@ -297,7 +263,9 @@ where
                         }
                     }
                     if saved_commit != *self.metadata.commit_idx.read().unwrap() {
-                        info!(self.logger, "commited index!");
+                        if let Err(e) = self.commit_tx.send(()).await {
+                            error!(self.logger, "Failed to send commit notification."; "error" => e.to_string());
+                        }
                     }
                 } else {
                     next_indexes[peer_idx] = next_idx - 1;
@@ -312,17 +280,24 @@ where
             info!(self.logger, "Starting worker!");
             self.follower_loop().await;
 
-            let saved_term = self.transition_candidate();
+            let saved_term = self.metadata.transition_candidate();
 
             match self.candidate_loop(saved_term).await {
                 ElectionResult::Failed => continue,
                 ElectionResult::Success => {
-                    info!(self.logger, "Won the election!!!"; "id" => &self.id)
+                    info!(self.logger, "Won the election!!!"; "id" => &self.metadata.id)
                 }
             };
 
             self.leader_loop().await;
         }
+    }
+
+    pub async fn commit_loop<F>(&self, _f: F)
+    where
+        F: FnMut(Entry),
+    {
+        while let Some(_) = self.commit_rx.lock().unwrap().recv().await {}
     }
 
     pub async fn submit(&self, command: Vec<u8>) -> Result<()> {
@@ -340,13 +315,13 @@ where
 
         if append_request.term > *self.metadata.current_term.read().unwrap() {
             debug!(self.logger, "Internal term is out of date with leader term."; "rpc" => "append", "got" => append_request.term, "have" => *self.metadata.current_term.read().unwrap());
-            self.transition_follower(Some(append_request.term));
+            self.metadata.transition_follower(Some(append_request.term));
         }
 
         if append_request.term == *self.metadata.current_term.read().unwrap() {
             if *self.metadata.state.read().unwrap() != State::Follower {
                 debug!(self.logger, "Internal state is out of date with leader term."; "rpc" => "append", "got" => append_request.term, "have" => *self.metadata.current_term.read().unwrap());
-                self.transition_follower(None);
+                self.metadata.transition_follower(None);
             }
 
             self.heartbeat_tx.send(())?;
@@ -385,10 +360,16 @@ where
                     log_insert_index += 1;
                 }
 
-                let mut commit_idx = self.metadata.commit_idx.write().unwrap();
-                if append_request.leader_commit_idx > *commit_idx {
-                    *commit_idx = append_request.leader_commit_idx.min(self.log.len() as i64);
-                    info!(self.logger, "Set new commit!");
+                let mut commit = false;
+                {
+                    let mut commit_idx = self.metadata.commit_idx.write().unwrap();
+                    if append_request.leader_commit_idx > *commit_idx {
+                        *commit_idx = append_request.leader_commit_idx.min(self.log.len() as i64);
+                        commit = true;
+                    }
+                }
+                if commit {
+                    self.commit_tx.send(()).await?;
                 }
             }
         }
@@ -408,7 +389,7 @@ where
 
         if vote_request.term > *self.metadata.current_term.read().unwrap() {
             debug!(self.logger, "Internal term is out of date with leader term."; "rpc" => "vote", "got" => vote_request.term, "have" => *self.metadata.current_term.read().unwrap());
-            self.transition_follower(Some(vote_request.term));
+            self.metadata.transition_follower(Some(vote_request.term));
         }
 
         let mut voted_for = self.metadata.voted_for.write().unwrap();

@@ -4,7 +4,7 @@
 use std::result;
 
 use thiserror::Error;
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 use tonic::Status;
 
 use crate::store;
@@ -20,6 +20,12 @@ pub enum Error {
         #[source]
         #[from]
         store::Error,
+    ),
+    #[error("tokio mpsc send error: {0}")]
+    MpscSend(
+        #[source]
+        #[from]
+        mpsc::error::SendError<()>,
     ),
     #[error("tokio watch send error: {0}")]
     WatchSend(
@@ -37,6 +43,12 @@ pub enum Error {
     InvalidState,
     #[error("state error: failed to find entry for index")]
     Missing,
+    #[error("sled error: {0}")]
+    Sled(
+        #[source]
+        #[from]
+        sled::Error,
+    ),
 }
 
 impl From<Error> for Status {

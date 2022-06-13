@@ -1,7 +1,9 @@
 // (c) Copyright 2022 Christian Saide
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::sync::RwLock;
+use std::sync::{Mutex, RwLock};
+
+use super::Result;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum State {
@@ -12,20 +14,31 @@ pub enum State {
 }
 
 #[derive(Debug)]
-pub struct Metadata {
+pub struct Metadata<P> {
+    pub id: String,
     pub state: RwLock<State>,
-    pub current_term: RwLock<i64>,
     pub commit_idx: RwLock<i64>,
+    pub peers: Mutex<Vec<P>>,
+    pub next_idx: Mutex<Vec<i64>>,
+    pub match_idx: Mutex<Vec<i64>>,
+
     pub voted_for: RwLock<Option<String>>,
+    pub current_term: RwLock<i64>,
 }
 
-impl Metadata {
-    pub fn new() -> Metadata {
+impl<P> Metadata<P> {
+    pub fn new(id: String, peers: Vec<P>) -> Metadata<P> {
+        let next_idx = Mutex::new(Vec::default());
+        let match_idx = Mutex::new(Vec::default());
         Metadata {
+            id,
             state: RwLock::new(State::Follower),
             current_term: RwLock::new(-1),
             commit_idx: RwLock::new(-1),
             voted_for: RwLock::new(None),
+            peers: Mutex::new(peers),
+            next_idx,
+            match_idx,
         }
     }
 
@@ -60,10 +73,34 @@ impl Metadata {
         *val += 1;
         *val
     }
-}
 
-impl Default for Metadata {
-    fn default() -> Self {
-        Self::new()
+    pub fn transition_follower(&self, term: Option<i64>) {
+        self.set_state(State::Follower);
+        if let Some(term) = term {
+            self.set_current_term(term);
+        }
+        self.set_voted_for(None);
+    }
+
+    pub fn transition_candidate(&self) -> i64 {
+        self.set_state(State::Candidate);
+        self.set_voted_for(Some(self.id.clone()));
+        self.incr_current_term()
+    }
+
+    pub fn transition_leader(&self, last_log_idx: i64) -> Result<()> {
+        self.set_state(State::Leader);
+        let peers = self.peers.lock().unwrap().len();
+        let mut next_idx = self.next_idx.lock().unwrap();
+        let mut match_idx = self.match_idx.lock().unwrap();
+
+        next_idx.clear();
+        match_idx.clear();
+
+        for _ in 0..peers {
+            next_idx.push(last_log_idx);
+            match_idx.push(0);
+        }
+        Ok(())
     }
 }
