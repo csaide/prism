@@ -7,38 +7,39 @@ package raft;
 
 // Describes a single log entry.
 message Entry {
-
+    int64 term = 1;
+    bytes command = 2;
 }
 
 // Describes a request represents either a heartbeat from the cluster leader, or a set of entires to
 // append to the recipients log.
 message AppendRequest {
-    uint64 term = 1;
+    int64 term = 1;
     string leader_id = 2;
-    uint64 leader_commit_idx = 3;
-    uint64 prev_log_idx = 4;
-    uint64 prev_log_term = 5;
+    int64 leader_commit_idx = 3;
+    int64 prev_log_idx = 4;
+    int64 prev_log_term = 5;
     repeated Entry entries = 6;
 }
 
 // Describes the response to the append request, and whether or not it was successful.
 message AppendResponse {
-    uint64 term = 1;
+    int64 term = 1;
     bool success = 2;
 }
 
 // Describes a request from a cluster member attempting to declare itself the cluster leader.
 message VoteRequest {
-    uint64 term = 1;
+    int64 term = 1;
     string candidate_id = 2;
-    uint64 last_log_idx = 3;
-    uint64 last_log_term = 4;
+    int64 last_log_idx = 3;
+    int64 last_log_term = 4;
 }
 
 // Describes the response to the vote request from the candidate and whether or not the local member,
 // granted its vote to said candidate.
 message VoteResponse {
-    uint64 term = 1;
+    int64 term = 1;
     bool vote_granted = 2;
 }
 

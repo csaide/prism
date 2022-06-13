@@ -18,4 +18,5 @@ pub use batch::Batch;
 pub use error::{Error, Result};
 pub use event::Event;
 pub use iter::Iter;
+pub use serde::Serializeable;
 pub use subscriber::Subscriber;

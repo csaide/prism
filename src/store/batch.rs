@@ -16,6 +16,13 @@ where
     K: Serializeable,
     V: Serializeable,
 {
+    pub fn new() -> Batch<K, V> {
+        Batch {
+            inner: sled::Batch::default(),
+            phantom_k: PhantomData,
+            phantom_v: PhantomData,
+        }
+    }
     pub fn insert(&mut self, k: K, v: V) {
         self.inner.insert(k.to_raw(), v.to_raw())
     }
@@ -24,5 +31,15 @@ where
     }
     pub fn into_inner(self) -> sled::Batch {
         self.inner
+    }
+}
+
+impl<K, V> Default for Batch<K, V>
+where
+    K: Serializeable,
+    V: Serializeable,
+{
+    fn default() -> Self {
+        Self::new()
     }
 }

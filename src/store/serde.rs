@@ -20,6 +20,15 @@ impl Serializeable for u64 {
     }
 }
 
+impl Serializeable for i64 {
+    fn to_raw(&self) -> IVec {
+        IVec::from(&self.to_be_bytes())
+    }
+    fn from_raw(data: &[u8]) -> Result<Self> {
+        data.try_into().map_err(Error::from).map(i64::from_be_bytes)
+    }
+}
+
 impl Serializeable for u128 {
     fn to_raw(&self) -> IVec {
         IVec::from(&self.to_be_bytes())

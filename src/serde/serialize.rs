@@ -9,6 +9,7 @@ use sled::IVec;
 /// This has a blanket implementation for all types T which are sized,
 /// however this is an inherently unsafe operation.
 ///
+/// # Safety
 /// Note NEVER implement this trait manually, instead rely on the [ByteSerializable]
 /// marker trait to handle auto-implementing this trait for you.
 pub unsafe trait Serialize: Sized {

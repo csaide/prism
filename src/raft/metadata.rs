@@ -14,7 +14,8 @@ pub enum State {
 #[derive(Debug)]
 pub struct Metadata {
     pub state: RwLock<State>,
-    pub current_term: RwLock<u64>,
+    pub current_term: RwLock<i64>,
+    pub commit_idx: RwLock<i64>,
     pub voted_for: RwLock<Option<String>>,
 }
 
@@ -22,7 +23,8 @@ impl Metadata {
     pub fn new() -> Metadata {
         Metadata {
             state: RwLock::new(State::Follower),
-            current_term: RwLock::new(0),
+            current_term: RwLock::new(-1),
+            commit_idx: RwLock::new(-1),
             voted_for: RwLock::new(None),
         }
     }
@@ -34,7 +36,7 @@ impl Metadata {
         *self.state.read().unwrap() == State::Candidate
     }
 
-    pub fn matches_term(&self, term: u64) -> bool {
+    pub fn matches_term(&self, term: i64) -> bool {
         *self.current_term.read().unwrap() == term
     }
 
@@ -43,7 +45,7 @@ impl Metadata {
         *val = state
     }
 
-    pub fn set_current_term(&self, term: u64) {
+    pub fn set_current_term(&self, term: i64) {
         let mut val = self.current_term.write().unwrap();
         *val = term
     }
@@ -53,9 +55,15 @@ impl Metadata {
         *val = voted_for
     }
 
-    pub fn incr_current_term(&self) -> u64 {
+    pub fn incr_current_term(&self) -> i64 {
         let mut val = self.current_term.write().unwrap();
         *val += 1;
         *val
+    }
+}
+
+impl Default for Metadata {
+    fn default() -> Self {
+        Self::new()
     }
 }

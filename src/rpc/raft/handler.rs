@@ -24,18 +24,18 @@ impl Handler {
     ) -> Result<Response<AppendResponse>, Status> {
         let req = req.into_inner();
         self.cm
-            .append(req.into())
+            .append(req)
             .await
-            .map(|op| Response::new(AppendResponse::from(op)))
+            .map(Response::new)
             .map_err(|e| e.into())
     }
 
     pub async fn vote(&self, req: Request<VoteRequest>) -> Result<Response<VoteResponse>, Status> {
         let req = req.into_inner();
         self.cm
-            .vote(req.into())
+            .vote(req)
             .await
-            .map(|resp| Response::new(VoteResponse::from(resp)))
+            .map(Response::new)
             .map_err(|e| e.into())
     }
 }

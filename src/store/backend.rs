@@ -7,6 +7,7 @@ use sled::Tree;
 
 use super::{serde::Serializeable, Batch, Error, Iter, Result, Subscriber};
 
+#[derive(Debug)]
 pub struct Store<K, V> {
     tree: Tree,
     phantom_k: PhantomData<K>,

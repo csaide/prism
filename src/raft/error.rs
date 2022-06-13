@@ -35,13 +35,15 @@ pub enum Error {
     ),
     #[error("state error: invalid state for operation")]
     InvalidState,
+    #[error("state error: failed to find entry for index")]
+    Missing,
 }
 
-impl Into<Status> for Error {
-    fn into(self) -> Status {
-        match self {
+impl From<Error> for Status {
+    fn from(input: Error) -> Self {
+        match input {
             Error::Rpc(status) => status,
-            _ => Status::internal(self.to_string()),
+            _ => Status::internal(input.to_string()),
         }
     }
 }
