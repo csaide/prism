@@ -1,13 +1,12 @@
 // (c) Copyright 2022 Christian Saide
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::result;
+use std::{array::TryFromSliceError, result};
 
+use sled::CompareAndSwapError;
 use thiserror::Error;
 use tokio::sync::{mpsc, watch};
 use tonic::Status;
-
-use crate::store;
 
 /// Custom Result wrapper to simplify usage.
 pub type Result<T> = result::Result<T, Error>;
@@ -15,12 +14,6 @@ pub type Result<T> = result::Result<T, Error>;
 /// Represents errors interacting with a storage repository.
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("store error: {0}")]
-    Store(
-        #[source]
-        #[from]
-        store::Error,
-    ),
     #[error("tokio mpsc send error: {0}")]
     MpscSend(
         #[source]
@@ -48,6 +41,20 @@ pub enum Error {
         #[source]
         #[from]
         sled::Error,
+    ),
+    #[error("internal cast error: {0}")]
+    Cast(
+        #[source]
+        #[from]
+        TryFromSliceError,
+    ),
+    #[error("serialization error: {0}")]
+    Serialize(String),
+    #[error("failed to swap values")]
+    CompareAndSwap(
+        #[source]
+        #[from]
+        CompareAndSwapError,
     ),
 }
 

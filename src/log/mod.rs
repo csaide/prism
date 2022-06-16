@@ -16,6 +16,12 @@ pub use self::config::Config;
 pub use self::error::{Error, Result};
 pub use self::level::Level;
 
+#[cfg(test)]
+pub fn noop() -> slog::Logger {
+    let drain = slog::Discard;
+    slog::Logger::root(drain, o!())
+}
+
 /// Return a defualt logger to use for init processing before configuraiton can be
 /// parsed. This default logger should only be used temporarily and then thrown away
 /// in favor of a user configured logger.

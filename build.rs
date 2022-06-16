@@ -25,6 +25,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tonic_build::configure()
             .build_client(true)
             .build_server(true)
+            .type_attribute(
+                ".raft",
+                "#[derive(serde_derive::Serialize, serde_derive::Deserialize)]",
+            )
+            .field_attribute(".raft.Command.data", "#[serde(with = \"serde_bytes\")]")
+            .field_attribute(".raft.Snapshot.data", "#[serde(with = \"serde_bytes\")]")
             .file_descriptor_set_path(out_dir.join(descriptor_name))
             .compile(&[file], &[PROTO_DIR])?;
     }

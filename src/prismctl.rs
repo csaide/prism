@@ -7,10 +7,11 @@ use structopt::StructOpt;
 use tokio::select;
 use tokio::time::{interval, Duration};
 
-use crate::log;
-use crate::raft::ConsensusMod;
+use crate::hash::Command;
+use crate::raft::{ConsensusMod, Peer};
 use crate::rpc::raft::RaftServiceClient;
 use crate::rpc::server::serve;
+use crate::{hash, log};
 
 const PRISMCTL: &str = "prismctl";
 
@@ -41,17 +42,41 @@ pub async fn run() -> ExitCode {
     let addr3 = "grpc://127.0.0.1:8083";
 
     let db1 = sled::Config::default().temporary(true).open().unwrap();
-    let mut cm1 = ConsensusMod::new(addr1.to_string(), Vec::default(), &root_logger, &db1).unwrap();
+    let sm1 = hash::HashState::new();
+    let mut cm1 = ConsensusMod::new(
+        addr1.to_string(),
+        Vec::default(),
+        &root_logger,
+        &db1,
+        sm1.clone(),
+    )
+    .unwrap();
     let sock_addr1 = addr1.replace("grpc://", "").parse().unwrap();
     let srv1 = serve(sock_addr1, cm1.clone(), root_logger.clone());
 
     let db2 = sled::Config::default().temporary(true).open().unwrap();
-    let mut cm2 = ConsensusMod::new(addr2.to_string(), Vec::default(), &root_logger, &db2).unwrap();
+    let sm2 = hash::HashState::new();
+    let mut cm2 = ConsensusMod::new(
+        addr2.to_string(),
+        Vec::default(),
+        &root_logger,
+        &db2,
+        sm2.clone(),
+    )
+    .unwrap();
     let sock_addr2 = addr2.replace("grpc://", "").parse().unwrap();
     let srv2 = serve(sock_addr2, cm2.clone(), root_logger.clone());
 
     let db3 = sled::Config::default().temporary(true).open().unwrap();
-    let mut cm3 = ConsensusMod::new(addr3.to_string(), Vec::default(), &root_logger, &db3).unwrap();
+    let sm3 = hash::HashState::new();
+    let mut cm3 = ConsensusMod::new(
+        addr3.to_string(),
+        Vec::default(),
+        &root_logger,
+        &db3,
+        sm3.clone(),
+    )
+    .unwrap();
     let sock_addr3 = addr3.replace("grpc://", "").parse().unwrap();
     let srv3 = serve(sock_addr3, cm3.clone(), root_logger.clone());
 
@@ -61,7 +86,8 @@ pub async fn run() -> ExitCode {
 
     let submit_logger = root_logger.clone();
     let submit = async move {
-        let payload = vec![0x01, 0x02, 0x03];
+        let payload = Command::Insert(String::from("hello"), 42);
+        let payload = payload.to_bytes();
 
         let mut interval = interval(Duration::from_secs(1));
         loop {
@@ -72,6 +98,18 @@ pub async fn run() -> ExitCode {
                 cm_submit2.submit(payload.clone()).await.unwrap();
             } else if cm_submit3.is_leader() {
                 cm_submit3.submit(payload.clone()).await.unwrap();
+            }
+
+            interval.tick().await;
+
+            for entry in sm1.dump() {
+                info!(submit_logger, "SM1 Entry: {:?}", entry);
+            }
+            for entry in sm2.dump() {
+                info!(submit_logger, "SM2 Entry: {:?}", entry);
+            }
+            for entry in sm3.dump() {
+                info!(submit_logger, "SM3 Entry: {:?}", entry);
             }
 
             for entry in cm_submit1.dump().unwrap() {
@@ -108,9 +146,9 @@ pub async fn run() -> ExitCode {
     });
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let peer1 = RaftServiceClient::connect(addr1).await.unwrap();
-    let peer2 = RaftServiceClient::connect(addr2).await.unwrap();
-    let peer3 = RaftServiceClient::connect(addr3).await.unwrap();
+    let peer1 = Peer::new(RaftServiceClient::connect(addr1).await.unwrap());
+    let peer2 = Peer::new(RaftServiceClient::connect(addr2).await.unwrap());
+    let peer3 = Peer::new(RaftServiceClient::connect(addr3).await.unwrap());
 
     cm1.append_peer(peer2.clone());
     cm1.append_peer(peer3.clone());

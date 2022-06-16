@@ -3,7 +3,7 @@
 
 use std::sync::{Mutex, RwLock};
 
-use super::Result;
+use super::{Client, Peer, Result};
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum State {
@@ -17,28 +17,27 @@ pub enum State {
 pub struct Metadata<P> {
     pub id: String,
     pub state: RwLock<State>,
+    pub last_applied_idx: RwLock<i64>,
     pub commit_idx: RwLock<i64>,
-    pub peers: Mutex<Vec<P>>,
-    pub next_idx: Mutex<Vec<i64>>,
-    pub match_idx: Mutex<Vec<i64>>,
+    pub peers: Mutex<Vec<Peer<P>>>,
 
     pub voted_for: RwLock<Option<String>>,
     pub current_term: RwLock<i64>,
 }
 
-impl<P> Metadata<P> {
-    pub fn new(id: String, peers: Vec<P>) -> Metadata<P> {
-        let next_idx = Mutex::new(Vec::default());
-        let match_idx = Mutex::new(Vec::default());
+impl<P> Metadata<P>
+where
+    P: Client + Send + Clone + 'static,
+{
+    pub fn new(id: String, peers: Vec<Peer<P>>) -> Metadata<P> {
         Metadata {
             id,
             state: RwLock::new(State::Follower),
             current_term: RwLock::new(-1),
             commit_idx: RwLock::new(-1),
+            last_applied_idx: RwLock::new(-1),
             voted_for: RwLock::new(None),
             peers: Mutex::new(peers),
-            next_idx,
-            match_idx,
         }
     }
 
@@ -90,16 +89,9 @@ impl<P> Metadata<P> {
 
     pub fn transition_leader(&self, last_log_idx: i64) -> Result<()> {
         self.set_state(State::Leader);
-        let peers = self.peers.lock().unwrap().len();
-        let mut next_idx = self.next_idx.lock().unwrap();
-        let mut match_idx = self.match_idx.lock().unwrap();
-
-        next_idx.clear();
-        match_idx.clear();
-
-        for _ in 0..peers {
-            next_idx.push(last_log_idx);
-            match_idx.push(0);
+        let mut peers = self.peers.lock().unwrap();
+        for peer in peers.iter_mut() {
+            peer.reset(last_log_idx);
         }
         Ok(())
     }

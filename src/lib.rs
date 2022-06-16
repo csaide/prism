@@ -6,6 +6,8 @@
 #[macro_use]
 extern crate slog;
 
+/// An example state machine implementation based on a in memory hashmap.
+pub mod hash;
 /// General logging utilities/functionality, based ontop of the [slog] ecosystem.
 pub mod log;
 /// Entrypoint logic for prismctl.
@@ -16,10 +18,6 @@ pub mod prismd;
 pub mod raft;
 /// gRPC implementation details.
 pub mod rpc;
-/// Serialization logic for converting to/from byte slices.
-pub mod serde;
-/// Datastore storage logic and implementations.
-pub mod store;
 
 use structopt::{
     clap::{crate_version, ErrorKind},

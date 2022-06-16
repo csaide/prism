@@ -5,10 +5,28 @@ syntax = "proto3";
 
 package raft;
 
-// Describes a single log entry.
-message Entry {
+message Command {
     int64 term = 1;
-    bytes command = 2;
+    bytes data = 2;
+}
+
+message Snapshot {
+    int64 last_included_idx = 1;
+    int64 last_included_term = 2;
+    bytes data = 3;
+}
+
+message Config {
+    int64 term = 1;
+    repeated string peers = 2;
+}
+
+message Entry {
+    oneof payload {
+        Command command = 1;
+        Snapshot snapshot = 2;
+        Config config = 3;
+    }
 }
 
 // Describes a request represents either a heartbeat from the cluster leader, or a set of entires to
