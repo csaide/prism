@@ -7,12 +7,11 @@ use std::sync::Arc;
 use tokio::sync::watch::{self, Receiver, Sender};
 
 use crate::raft::{Commiter, Leader};
-use crate::rpc::raft::{
-    AppendRequest, AppendResponse, Command, Payload, VoteRequest, VoteResponse,
-};
 
 use super::{
-    Candidate, Client, ElectionResult, Error, Follower, Log, Metadata, Peer, Result, StateMachine,
+    AppendEntriesRequest, AppendEntriesResponse, Candidate, Client, Command, ElectionResult, Entry,
+    Error, Follower, Log, Metadata, Peer, RequestVoteRequest, RequestVoteResponse, Result,
+    StateMachine,
 };
 
 #[derive(Debug, Clone)]
@@ -72,7 +71,7 @@ where
         self.metadata.is_leader()
     }
 
-    pub fn dump(&self) -> Result<Vec<Payload>> {
+    pub fn dump(&self) -> Result<Vec<Entry>> {
         self.log.dump()
     }
 
@@ -83,7 +82,7 @@ where
             .await
     }
 
-    async fn candidate_loop(&self, saved_term: i64) -> ElectionResult {
+    async fn candidate_loop(&self, saved_term: u128) -> ElectionResult {
         Candidate::new(
             &self.logger,
             self.metadata.clone(),
@@ -144,7 +143,7 @@ where
         }
 
         let current_term = self.metadata.get_current_term();
-        self.log.append(Payload::Command(Command {
+        self.log.append(Entry::Command(Command {
             term: current_term,
             data: command,
         }))?;
@@ -152,10 +151,13 @@ where
         self.submit_tx.send(()).map_err(Error::from)
     }
 
-    pub async fn append(&self, append_request: AppendRequest) -> Result<AppendResponse> {
-        let log_ok = |append_request: &AppendRequest| -> Result<bool> {
-            Ok(append_request.prev_log_idx == -1
-                || (append_request.prev_log_idx < self.log.len() as i64
+    pub async fn append(
+        &self,
+        append_request: AppendEntriesRequest,
+    ) -> Result<AppendEntriesResponse> {
+        let log_ok = |append_request: &AppendEntriesRequest| -> Result<bool> {
+            Ok(append_request.prev_log_idx == 0
+                || (append_request.prev_log_idx <= self.log.len() as u128
                     && self.log.idx_and_term_match(
                         append_request.prev_log_idx,
                         append_request.prev_log_term,
@@ -181,7 +183,7 @@ where
 
         let term = self.metadata.get_current_term();
         let success = false;
-        let mut response = AppendResponse { success, term };
+        let mut response = AppendEntriesResponse { success, term };
 
         if append_request.term == term && self.metadata.is_follower() && (log_ok)(&append_request)?
         {
@@ -193,17 +195,17 @@ where
                 .append_entries(append_request.prev_log_idx, append_request.entries)?;
             if append_request.leader_commit_idx > self.metadata.get_commit_idx() {
                 self.metadata
-                    .set_commit_idx(append_request.leader_commit_idx.min(self.log.len() as i64));
+                    .set_commit_idx(append_request.leader_commit_idx.min(self.log.len() as u128));
                 self.commit_tx.send(())?;
             }
         }
         Ok(response)
     }
 
-    pub async fn vote(&self, vote_request: VoteRequest) -> Result<VoteResponse> {
+    pub async fn vote(&self, vote_request: RequestVoteRequest) -> Result<RequestVoteResponse> {
         debug!(self.logger, "Executing vote RPC.");
 
-        let log_ok = |vote_request: &VoteRequest| -> Result<bool> {
+        let log_ok = |vote_request: &RequestVoteRequest| -> Result<bool> {
             let (last_log_idx, last_log_term) = self.log.last_log_idx_and_term()?;
 
             let result = vote_request.last_log_term > last_log_term
@@ -212,7 +214,7 @@ where
             Ok(result)
         };
 
-        let grant = |vote_request: &VoteRequest| -> Result<bool> {
+        let grant = |vote_request: &RequestVoteRequest| -> Result<bool> {
             let voted_for = self.metadata.get_voted_for();
             Ok(vote_request.term == self.metadata.get_current_term()
                 && (log_ok)(vote_request)?
@@ -232,7 +234,7 @@ where
 
         let term = self.metadata.get_current_term();
         let vote_granted = false;
-        let mut response = VoteResponse { vote_granted, term };
+        let mut response = RequestVoteResponse { vote_granted, term };
 
         if vote_request.term <= term && (grant)(&vote_request)? {
             response.vote_granted = true;
@@ -245,8 +247,11 @@ where
 
 #[tonic::async_trait]
 pub trait ConcensusRepo: Send + Sync + 'static {
-    async fn append_entries(&self, mut append_request: AppendRequest) -> Result<AppendResponse>;
-    async fn vote_request(&self, vote_request: VoteRequest) -> Result<VoteResponse>;
+    async fn append_entries(
+        &self,
+        mut append_request: AppendEntriesRequest,
+    ) -> Result<AppendEntriesResponse>;
+    async fn vote_request(&self, vote_request: RequestVoteRequest) -> Result<RequestVoteResponse>;
 }
 
 #[tonic::async_trait]
@@ -255,10 +260,13 @@ where
     P: Client + Send + Clone + 'static,
     S: StateMachine + Send + Sync + 'static,
 {
-    async fn append_entries(&self, append_request: AppendRequest) -> Result<AppendResponse> {
+    async fn append_entries(
+        &self,
+        append_request: AppendEntriesRequest,
+    ) -> Result<AppendEntriesResponse> {
         self.append(append_request).await
     }
-    async fn vote_request(&self, vote_request: VoteRequest) -> Result<VoteResponse> {
+    async fn vote_request(&self, vote_request: RequestVoteRequest) -> Result<RequestVoteResponse> {
         self.vote(vote_request).await
     }
 }

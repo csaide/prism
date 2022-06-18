@@ -6,58 +6,52 @@ syntax = "proto3";
 package raft;
 
 message Command {
-    int64 term = 1;
+    bytes term = 1;
     bytes data = 2;
 }
 
-message Snapshot {
-    int64 last_included_idx = 1;
-    int64 last_included_term = 2;
-    bytes data = 3;
-}
-
-message Config {
-    int64 term = 1;
-    repeated string peers = 2;
+message ClusterConfig {
+    bytes term = 1;
+    repeated string voters = 2;
+    repeated string replicas = 3;
 }
 
 message Entry {
     oneof payload {
         Command command = 1;
-        Snapshot snapshot = 2;
-        Config config = 3;
+        ClusterConfig config = 3;
     }
 }
 
 // Describes a request represents either a heartbeat from the cluster leader, or a set of entires to
 // append to the recipients log.
 message AppendRequest {
-    int64 term = 1;
+    bytes term = 1;
     string leader_id = 2;
-    int64 leader_commit_idx = 3;
-    int64 prev_log_idx = 4;
-    int64 prev_log_term = 5;
+    bytes leader_commit_idx = 3;
+    bytes prev_log_idx = 4;
+    bytes prev_log_term = 5;
     repeated Entry entries = 6;
 }
 
 // Describes the response to the append request, and whether or not it was successful.
 message AppendResponse {
-    int64 term = 1;
+    bytes term = 1;
     bool success = 2;
 }
 
 // Describes a request from a cluster member attempting to declare itself the cluster leader.
 message VoteRequest {
-    int64 term = 1;
+    bytes term = 1;
     string candidate_id = 2;
-    int64 last_log_idx = 3;
-    int64 last_log_term = 4;
+    bytes last_log_idx = 3;
+    bytes last_log_term = 4;
 }
 
 // Describes the response to the vote request from the candidate and whether or not the local member,
 // granted its vote to said candidate.
 message VoteResponse {
-    int64 term = 1;
+    bytes term = 1;
     bool vote_granted = 2;
 }
 

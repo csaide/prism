@@ -3,21 +3,23 @@
 
 use std::sync::Arc;
 
-use super::{Client, Result};
-use crate::rpc::raft::{AppendRequest, AppendResponse, VoteRequest, VoteResponse};
+use super::{
+    AppendEntriesRequest, AppendEntriesResponse, Client, RequestVoteRequest, RequestVoteResponse,
+    Result,
+};
 
 #[derive(Clone)]
 pub struct MockPeer {
-    pub vote_resp: Arc<Box<dyn Fn() -> Result<VoteResponse> + Send + Sync>>,
-    pub append_resp: Arc<Box<dyn Fn() -> Result<AppendResponse> + Send + Sync>>,
+    pub vote_resp: Arc<Box<dyn Fn() -> Result<RequestVoteResponse> + Send + Sync>>,
+    pub append_resp: Arc<Box<dyn Fn() -> Result<AppendEntriesResponse> + Send + Sync>>,
 }
 
 #[tonic::async_trait]
 impl Client for MockPeer {
-    async fn vote(&mut self, _: VoteRequest) -> Result<VoteResponse> {
+    async fn vote(&mut self, _: RequestVoteRequest) -> Result<RequestVoteResponse> {
         (self.vote_resp)()
     }
-    async fn append(&mut self, _: AppendRequest) -> Result<AppendResponse> {
+    async fn append(&mut self, _: AppendEntriesRequest) -> Result<AppendEntriesResponse> {
         (self.append_resp)()
     }
 }

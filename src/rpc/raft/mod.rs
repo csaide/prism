@@ -2,58 +2,207 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 mod proto {
-    use sled::IVec;
     use tonic::transport::Channel;
 
-    use crate::raft::{Client, Error, Result};
-
-    use super::Payload;
+    use crate::raft::{
+        self, AppendEntriesRequest, AppendEntriesResponse, Client, Error, RequestVoteRequest,
+        RequestVoteResponse, Result,
+    };
 
     tonic::include_proto!("raft");
 
     #[tonic::async_trait]
     impl Client for raft_service_client::RaftServiceClient<Channel> {
-        async fn vote(&mut self, req: VoteRequest) -> Result<VoteResponse> {
-            self.request_vote(req)
+        async fn vote(&mut self, req: RequestVoteRequest) -> Result<RequestVoteResponse> {
+            let resp = self
+                .request_vote(VoteRequest::from_raft(req)?)
                 .await
                 .map(|resp| resp.into_inner())
-                .map_err(Error::from)
+                .map_err(Error::from)?;
+            resp.into_raft()
         }
-        async fn append(&mut self, req: AppendRequest) -> Result<AppendResponse> {
-            self.append_entries(req)
+        async fn append(&mut self, req: AppendEntriesRequest) -> Result<AppendEntriesResponse> {
+            let resp = self
+                .append_entries(AppendRequest::from_raft(req)?)
                 .await
                 .map(|resp| resp.into_inner())
-                .map_err(Error::from)
-        }
-    }
-
-    impl Entry {
-        pub fn term(&self) -> i64 {
-            let payload = match self.payload.as_ref() {
-                Some(payload) => payload,
-                None => return -1,
-            };
-            payload.term()
+                .map_err(Error::from)?;
+            resp.into_raft()
         }
     }
 
     impl entry::Payload {
-        pub fn term(&self) -> i64 {
+        pub fn into_raft(self) -> Result<raft::Entry> {
             use entry::Payload::*;
             match self {
-                Config(cfg) => cfg.term,
-                Command(cmd) => cmd.term,
-                Snapshot(snap) => snap.last_included_term,
+                Command(cmd) => {
+                    let term = cmd.term.as_slice().try_into().map(u128::from_be_bytes)?;
+                    Ok(raft::Entry::Command(raft::Command {
+                        term,
+                        data: cmd.data,
+                    }))
+                }
+                Config(cfg) => {
+                    let term = cfg.term.as_slice().try_into().map(u128::from_be_bytes)?;
+                    Ok(raft::Entry::ClusterConfig(raft::ClusterConfig {
+                        term,
+                        replicas: cfg.replicas,
+                        voters: cfg.voters,
+                    }))
+                }
             }
         }
 
-        pub fn to_ivec(&self) -> Result<IVec> {
-            Ok(IVec::from(
-                bincode::serialize(self).map_err(|e| Error::Serialize(e.to_string()))?,
-            ))
+        pub fn from_raft(input: raft::Entry) -> Result<entry::Payload> {
+            Ok(match input {
+                raft::Entry::Command(cmd) => entry::Payload::Command(Command {
+                    data: cmd.data,
+                    term: cmd.term.to_be_bytes().to_vec(),
+                }),
+                raft::Entry::ClusterConfig(cfg) => entry::Payload::Config(ClusterConfig {
+                    term: cfg.term.to_be_bytes().to_vec(),
+                    replicas: cfg.replicas,
+                    voters: cfg.voters,
+                }),
+            })
         }
-        pub fn from_ivec(v: IVec) -> Result<Payload> {
-            bincode::deserialize(v.as_ref()).map_err(|e| Error::Serialize(e.to_string()))
+    }
+
+    impl Entry {
+        pub fn into_raft(self) -> Result<raft::Entry> {
+            if let Some(payload) = self.payload {
+                payload.into_raft()
+            } else {
+                Err(Error::Missing)
+            }
+        }
+
+        pub fn from_raft(input: raft::Entry) -> Result<Entry> {
+            Ok(Entry {
+                payload: Some(entry::Payload::from_raft(input)?),
+            })
+        }
+    }
+
+    impl AppendRequest {
+        pub fn into_raft(mut self) -> Result<AppendEntriesRequest> {
+            let term = self.term.as_slice().try_into().map(u128::from_be_bytes)?;
+            let leader_commit_idx = self
+                .leader_commit_idx
+                .as_slice()
+                .try_into()
+                .map(u128::from_be_bytes)?;
+            let prev_log_idx = self
+                .prev_log_idx
+                .as_slice()
+                .try_into()
+                .map(u128::from_be_bytes)?;
+            let prev_log_term = self
+                .prev_log_term
+                .as_slice()
+                .try_into()
+                .map(u128::from_be_bytes)?;
+            let entries: Result<Vec<raft::Entry>> = self
+                .entries
+                .drain(..)
+                .map(|entry| entry.into_raft())
+                .collect();
+            let entries = match entries {
+                Ok(entries) => entries,
+                Err(e) => return Err(e),
+            };
+
+            Ok(AppendEntriesRequest {
+                term,
+                leader_commit_idx,
+                prev_log_idx,
+                prev_log_term,
+                leader_id: self.leader_id,
+                entries,
+            })
+        }
+
+        pub fn from_raft(mut input: AppendEntriesRequest) -> Result<AppendRequest> {
+            let entries = input.entries.drain(..).map(Entry::from_raft).collect();
+            let entries = match entries {
+                Ok(entries) => entries,
+                Err(e) => return Err(e),
+            };
+
+            Ok(AppendRequest {
+                leader_id: input.leader_id,
+                term: input.term.to_be_bytes().to_vec(),
+                leader_commit_idx: input.leader_commit_idx.to_be_bytes().to_vec(),
+                prev_log_idx: input.prev_log_idx.to_be_bytes().to_vec(),
+                prev_log_term: input.prev_log_term.to_be_bytes().to_vec(),
+                entries,
+            })
+        }
+    }
+
+    impl AppendResponse {
+        pub fn into_raft(self) -> Result<AppendEntriesResponse> {
+            let term = self.term.as_slice().try_into().map(u128::from_be_bytes)?;
+            Ok(AppendEntriesResponse {
+                term,
+                success: self.success,
+            })
+        }
+
+        pub fn from_raft(input: AppendEntriesResponse) -> Result<AppendResponse> {
+            Ok(AppendResponse {
+                term: input.term.to_be_bytes().to_vec(),
+                success: input.success,
+            })
+        }
+    }
+
+    impl VoteRequest {
+        pub fn into_raft(self) -> Result<RequestVoteRequest> {
+            let term = self.term.as_slice().try_into().map(u128::from_be_bytes)?;
+            let last_log_idx = self
+                .last_log_idx
+                .as_slice()
+                .try_into()
+                .map(u128::from_be_bytes)?;
+            let last_log_term = self
+                .last_log_term
+                .as_slice()
+                .try_into()
+                .map(u128::from_be_bytes)?;
+
+            Ok(RequestVoteRequest {
+                candidate_id: self.candidate_id,
+                last_log_idx,
+                last_log_term,
+                term,
+            })
+        }
+
+        pub fn from_raft(input: RequestVoteRequest) -> Result<VoteRequest> {
+            Ok(VoteRequest {
+                candidate_id: input.candidate_id,
+                last_log_idx: input.last_log_idx.to_be_bytes().to_vec(),
+                last_log_term: input.last_log_term.to_be_bytes().to_vec(),
+                term: input.term.to_be_bytes().to_vec(),
+            })
+        }
+    }
+
+    impl VoteResponse {
+        pub fn into_raft(self) -> Result<RequestVoteResponse> {
+            let term = self.term.as_slice().try_into().map(u128::from_be_bytes)?;
+            Ok(RequestVoteResponse {
+                term,
+                vote_granted: self.vote_granted,
+            })
+        }
+
+        pub fn from_raft(input: RequestVoteResponse) -> Result<VoteResponse> {
+            Ok(VoteResponse {
+                term: input.term.to_be_bytes().to_vec(),
+                vote_granted: input.vote_granted,
+            })
         }
     }
 }
@@ -67,5 +216,5 @@ pub use proto::{
     entry::Payload, raft_service_client::RaftServiceClient, raft_service_server::RaftServiceServer,
 };
 pub use proto::{
-    AppendRequest, AppendResponse, Command, Config, Entry, Snapshot, VoteRequest, VoteResponse,
+    AppendRequest, AppendResponse, ClusterConfig, Command, Entry, VoteRequest, VoteResponse,
 };

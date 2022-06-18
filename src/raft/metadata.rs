@@ -43,32 +43,32 @@ impl PersistentState {
         Ok(())
     }
 
-    pub fn get_current_term(&self) -> Result<i64> {
+    pub fn get_current_term(&self) -> Result<u128> {
         match self.tree.get("current_term")? {
             Some(ivec) => ivec
                 .as_ref()
                 .try_into()
-                .map(i64::from_be_bytes)
+                .map(u128::from_be_bytes)
                 .map_err(Error::from),
-            None => Ok(0),
+            None => Ok(1),
         }
     }
 
-    pub fn set_current_term(&self, term: i64) -> Result<()> {
+    pub fn set_current_term(&self, term: u128) -> Result<()> {
         self.tree.insert("current_term", &term.to_be_bytes())?;
         Ok(())
     }
 
-    pub fn incr_current_term(&self) -> Result<i64> {
+    pub fn incr_current_term(&self) -> Result<u128> {
         self.tree
             .update_and_fetch("current_term", |old: Option<&[u8]>| -> Option<Vec<u8>> {
                 let number = match old {
                     Some(bytes) => {
-                        let array: [u8; 8] = bytes.try_into().unwrap();
-                        let number = i64::from_be_bytes(array);
+                        let array: [u8; 16] = bytes.try_into().unwrap();
+                        let number = u128::from_be_bytes(array);
                         number + 1
                     }
-                    None => 0,
+                    None => 1,
                 };
 
                 Some(number.to_be_bytes().to_vec())
@@ -76,10 +76,10 @@ impl PersistentState {
             .map(|ivec| {
                 ivec.as_ref()
                     .try_into()
-                    .map(i64::from_be_bytes)
+                    .map(u128::from_be_bytes)
                     .map_err(Error::from)
             })
-            .unwrap_or(Ok(0))
+            .unwrap_or(Ok(1))
     }
 }
 
@@ -89,8 +89,8 @@ pub struct Metadata<P> {
 
     // Volatile state.
     pub state: RwLock<State>,
-    pub last_applied_idx: RwLock<i64>,
-    pub commit_idx: RwLock<i64>,
+    pub last_applied_idx: RwLock<u128>,
+    pub commit_idx: RwLock<u128>,
     pub peers: Peers<P>,
 
     // Persistent state.
@@ -107,8 +107,8 @@ where
         Ok(Metadata {
             id,
             state: RwLock::new(State::Follower),
-            commit_idx: RwLock::new(-1),
-            last_applied_idx: RwLock::new(-1),
+            commit_idx: RwLock::new(0),
+            last_applied_idx: RwLock::new(0),
             persistent,
             peers,
         })
@@ -126,7 +126,7 @@ where
         *self.state.read().unwrap() == State::Follower
     }
 
-    pub fn matches_term(&self, term: i64) -> bool {
+    pub fn matches_term(&self, term: u128) -> bool {
         match self.persistent.get_current_term() {
             Ok(current) => current == term,
             Err(_) => unreachable!(),
@@ -138,10 +138,10 @@ where
         *val = state
     }
 
-    pub fn set_current_term(&self, term: i64) {
+    pub fn set_current_term(&self, term: u128) {
         self.persistent.set_current_term(term).unwrap();
     }
-    pub fn get_current_term(&self) -> i64 {
+    pub fn get_current_term(&self) -> u128 {
         self.persistent.get_current_term().unwrap()
     }
     pub fn set_voted_for(&self, voted_for: Option<String>) {
@@ -152,29 +152,29 @@ where
         self.persistent.get_voted_for().unwrap()
     }
 
-    pub fn set_commit_idx(&self, commit_idx: i64) {
+    pub fn set_commit_idx(&self, commit_idx: u128) {
         let mut val = self.commit_idx.write().unwrap();
         *val = commit_idx
     }
 
-    pub fn get_commit_idx(&self) -> i64 {
+    pub fn get_commit_idx(&self) -> u128 {
         *self.commit_idx.read().unwrap()
     }
 
-    pub fn set_last_applied_idx(&self, last_applied_idx: i64) {
+    pub fn set_last_applied_idx(&self, last_applied_idx: u128) {
         let mut val = self.last_applied_idx.write().unwrap();
         *val = last_applied_idx
     }
 
-    pub fn get_last_applied_idx(&self) -> i64 {
+    pub fn get_last_applied_idx(&self) -> u128 {
         *self.last_applied_idx.read().unwrap()
     }
 
-    pub fn incr_current_term(&self) -> i64 {
+    pub fn incr_current_term(&self) -> u128 {
         self.persistent.incr_current_term().unwrap_or(0)
     }
 
-    pub fn transition_follower(&self, term: Option<i64>) {
+    pub fn transition_follower(&self, term: Option<u128>) {
         self.set_state(State::Follower);
         if let Some(term) = term {
             self.set_current_term(term);
@@ -182,13 +182,13 @@ where
         self.set_voted_for(None);
     }
 
-    pub fn transition_candidate(&self) -> i64 {
+    pub fn transition_candidate(&self) -> u128 {
         self.set_state(State::Candidate);
         self.set_voted_for(Some(self.id.clone()));
         self.incr_current_term()
     }
 
-    pub fn transition_leader(&self, last_log_idx: i64) {
+    pub fn transition_leader(&self, last_log_idx: u128) {
         self.set_state(State::Leader);
         self.peers.reset(last_log_idx);
     }

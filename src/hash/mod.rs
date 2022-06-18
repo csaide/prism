@@ -50,7 +50,7 @@ impl Default for HashState {
 }
 
 impl StateMachine for HashState {
-    fn apply(&self, command: crate::rpc::raft::Command) {
+    fn apply(&self, command: crate::raft::Command) {
         let cmd = match bincode::deserialize(command.data.as_ref()) {
             Ok(cmd) => cmd,
             Err(_) => return,

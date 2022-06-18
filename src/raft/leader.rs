@@ -6,9 +6,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 use tokio::time::{timeout, Duration};
 
-use crate::rpc::raft::{AppendRequest, AppendResponse, Entry};
-
-use super::{Client, Log, Metadata, Result};
+use super::{AppendEntriesRequest, AppendEntriesResponse, Client, Log, Metadata, Result};
 
 pub struct Leader<P> {
     logger: slog::Logger,
@@ -41,7 +39,7 @@ where
         let (last_log_idx, _) = match self.log.last_log_idx_and_term() {
             Ok(tuple) => tuple,
             Err(e) => {
-                error!(self.logger, "Failed to retrieve last log i64."; "error" => e.to_string());
+                error!(self.logger, "Failed to retrieve last log u128."; "error" => e.to_string());
                 return;
             }
         };
@@ -51,8 +49,9 @@ where
         while self.metadata.is_leader() {
             let saved_term = self.metadata.get_current_term();
 
-            let (tx, rx) =
-                mpsc::channel::<(usize, String, Result<AppendResponse>)>(self.metadata.peers.len());
+            let (tx, rx) = mpsc::channel::<(usize, String, Result<AppendEntriesResponse>)>(
+                self.metadata.peers.len(),
+            );
             self.send_requests(saved_term, &tx);
             drop(tx);
 
@@ -66,31 +65,23 @@ where
 
     pub fn send_requests(
         &self,
-        saved_term: i64,
-        tx: &mpsc::Sender<(usize, String, Result<AppendResponse>)>,
+        saved_term: u128,
+        tx: &mpsc::Sender<(usize, String, Result<AppendEntriesResponse>)>,
     ) {
         for (peer_id, peer) in self.metadata.peers.lock().iter() {
             let prev_log_idx = peer.next_idx - 1;
-            let mut prev_log_term = -1;
-            if prev_log_idx >= 0 {
+            let mut prev_log_term = 0;
+            if prev_log_idx > 0 {
                 prev_log_term = self
                     .log
                     .get(prev_log_idx)
                     .map(|entry| entry.term())
-                    .unwrap_or(-1);
+                    .unwrap_or(0);
             }
 
-            let entries = self
-                .log
-                .range(peer.next_idx, i64::MAX)
-                .unwrap_or_default()
-                .drain(..)
-                .map(|payload| Entry {
-                    payload: Some(payload),
-                })
-                .collect();
+            let entries = self.log.range(peer.next_idx, u128::MAX).unwrap_or_default();
 
-            let req = AppendRequest {
+            let req = AppendEntriesRequest {
                 leader_commit_idx: self.metadata.get_commit_idx(),
                 leader_id: self.metadata.id.clone(),
                 prev_log_idx,
@@ -112,15 +103,15 @@ where
 
     pub async fn handle_responses(
         &self,
-        saved_term: i64,
-        mut rx: mpsc::Receiver<(usize, String, Result<AppendResponse>)>,
+        saved_term: u128,
+        mut rx: mpsc::Receiver<(usize, String, Result<AppendEntriesResponse>)>,
     ) {
         while let Some(evt) = rx.recv().await {
             let (entries, peer_id, resp) = evt;
             let resp = match resp {
                 Ok(resp) => resp,
                 Err(e) => {
-                    error!(self.logger, "Failed to execute VoteRequest rpc."; "error" => e.to_string());
+                    error!(self.logger, "Failed to execute AppendEntries rpc."; "error" => e.to_string());
                     continue;
                 }
             };
@@ -142,16 +133,17 @@ where
                 None => continue,
             };
             if !resp.success {
+                // info!(self.logger, "failed to successfully append.");
                 peer.next_idx -= 1;
                 continue;
             }
 
-            peer.next_idx += entries as i64;
+            peer.next_idx += entries as u128;
             peer.match_idx = peer.next_idx - 1;
 
             let saved_commit = self.metadata.get_commit_idx();
             let start = saved_commit + 1;
-            for idx in start..self.log.len() as i64 {
+            for idx in start..self.log.len() as u128 {
                 match self.log.get(idx) {
                     Ok(entry) if entry.term() != saved_term => continue,
                     Err(e) => {

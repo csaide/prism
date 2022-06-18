@@ -26,18 +26,18 @@ where
         req: Request<AppendRequest>,
     ) -> Result<Response<AppendResponse>, Status> {
         let req = req.into_inner();
-        self.cm
-            .append_entries(req)
-            .await
+        let req = req.into_raft()?;
+        let resp = self.cm.append_entries(req).await?;
+        AppendResponse::from_raft(resp)
             .map(Response::new)
             .map_err(|e| e.into())
     }
 
     pub async fn vote(&self, req: Request<VoteRequest>) -> Result<Response<VoteResponse>, Status> {
         let req = req.into_inner();
-        self.cm
-            .vote_request(req)
-            .await
+        let req = req.into_raft()?;
+        let resp = self.cm.vote_request(req).await?;
+        VoteResponse::from_raft(resp)
             .map(Response::new)
             .map_err(|e| e.into())
     }

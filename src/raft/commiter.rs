@@ -5,9 +5,7 @@ use std::sync::Arc;
 
 use tokio::sync::watch;
 
-use crate::rpc::raft::Payload;
-
-use super::{Client, Log, Metadata, StateMachine};
+use super::{Client, Entry, Log, Metadata, StateMachine};
 
 pub struct Commiter<P, S> {
     logger: slog::Logger,
@@ -56,7 +54,7 @@ where
             };
 
             for entry in entries.drain(..) {
-                use Payload::*;
+                use Entry::*;
                 match entry {
                     Command(cmd) => self.state_machine.apply(cmd),
                     _ => continue,

@@ -4,20 +4,21 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 
-use super::Result;
-use crate::rpc::raft::{AppendRequest, AppendResponse, VoteRequest, VoteResponse};
+use super::{
+    AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse, Result,
+};
 
 #[tonic::async_trait]
 pub trait Client: Send + Sync + 'static {
-    async fn vote(&mut self, req: VoteRequest) -> Result<VoteResponse>;
-    async fn append(&mut self, req: AppendRequest) -> Result<AppendResponse>;
+    async fn vote(&mut self, req: RequestVoteRequest) -> Result<RequestVoteResponse>;
+    async fn append(&mut self, req: AppendEntriesRequest) -> Result<AppendEntriesResponse>;
 }
 
 #[derive(Debug, Clone)]
 pub struct Peer<C> {
     client: C,
-    pub next_idx: i64,
-    pub match_idx: i64,
+    pub next_idx: u128,
+    pub match_idx: u128,
 }
 
 impl<C> Peer<C>
@@ -32,16 +33,16 @@ where
         }
     }
 
-    pub fn reset(&mut self, last_log_idx: i64) {
+    pub fn reset(&mut self, last_log_idx: u128) {
         self.next_idx = last_log_idx + 1;
         self.match_idx = 0;
     }
 
-    pub async fn vote(&mut self, req: VoteRequest) -> Result<VoteResponse> {
+    pub async fn vote(&mut self, req: RequestVoteRequest) -> Result<RequestVoteResponse> {
         self.client.vote(req).await
     }
 
-    pub async fn append(&mut self, req: AppendRequest) -> Result<AppendResponse> {
+    pub async fn append(&mut self, req: AppendEntriesRequest) -> Result<AppendEntriesResponse> {
         self.client.append(req).await
     }
 }
@@ -77,7 +78,7 @@ where
         self.peers.lock().unwrap().insert(id, peer);
     }
 
-    pub fn reset(&self, last_log_idx: i64) {
+    pub fn reset(&self, last_log_idx: u128) {
         self.peers
             .lock()
             .unwrap()
@@ -130,7 +131,7 @@ impl<'a, C> LockedPeers<'a, C> {
         self.items.get_mut(id)
     }
 
-    pub fn idx_matches(&self, idx: i64) -> bool {
+    pub fn idx_matches(&self, idx: u128) -> bool {
         let mut matches = 1;
         for (_, peer) in self.items.iter() {
             if peer.match_idx >= idx {

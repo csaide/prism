@@ -50,7 +50,7 @@ pub enum Error {
     ),
     #[error("serialization error: {0}")]
     Serialize(String),
-    #[error("failed to swap values")]
+    #[error("failed to swap values: {0}")]
     CompareAndSwap(
         #[source]
         #[from]

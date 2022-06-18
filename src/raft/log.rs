@@ -3,9 +3,7 @@
 
 use sled::IVec;
 
-use crate::rpc::raft::{Entry, Payload};
-
-use super::{Error, Result};
+use super::{Entry, Error, Result};
 
 #[derive(Debug)]
 pub struct Log {
@@ -28,60 +26,58 @@ impl Log {
         self.store.is_empty()
     }
 
-    pub fn last_log_idx_and_term(&self) -> Result<(i64, i64)> {
+    pub fn last_log_idx_and_term(&self) -> Result<(u128, u128)> {
         let (idx, entry) = match self.store.last()? {
             Some(tuple) => tuple,
-            None => return Ok((-1, -1)),
+            None => return Ok((0, 0)),
         };
 
-        let idx = idx.as_ref().try_into().map(i64::from_be_bytes)?;
-        use Payload::*;
-        match Payload::from_ivec(entry)? {
+        let idx = idx.as_ref().try_into().map(u128::from_be_bytes)?;
+        use Entry::*;
+        match Entry::from_ivec(entry)? {
             Command(cmd) => Ok((idx, cmd.term)),
-            Config(cfg) => Ok((idx, cfg.term)),
-            Snapshot(snap) => Ok((snap.last_included_idx, snap.last_included_term)),
+            ClusterConfig(cfg) => Ok((idx, cfg.term)),
         }
     }
 
-    pub fn append(&self, payload: Payload) -> Result<()> {
+    pub fn append(&self, entry: Entry) -> Result<()> {
         let idx = match self.store.last()? {
-            Some((idx, _)) => idx.as_ref().try_into().map(i64::from_be_bytes)? + 1,
+            Some((idx, _)) => idx.as_ref().try_into().map(u128::from_be_bytes)? + 1,
             None => 0,
         };
         let idx = IVec::from(&idx.to_be_bytes());
         self.store
-            .compare_and_swap::<IVec, IVec, IVec>(idx, None, Some(payload.to_ivec()?))?
+            .compare_and_swap::<IVec, IVec, IVec>(idx, None, Some(entry.to_ivec()?))?
             .map_err(Error::from)
     }
 
-    pub fn insert(&self, idx: i64, payload: Payload) -> Result<()> {
+    pub fn insert(&self, idx: u128, entry: Entry) -> Result<()> {
         self.store
             .compare_and_swap::<IVec, IVec, IVec>(
                 IVec::from(&idx.to_be_bytes()),
                 None,
-                Some(payload.to_ivec()?),
+                Some(entry.to_ivec()?),
             )?
             .map_err(Error::from)
     }
 
-    pub fn idx_and_term_match(&self, idx: i64, term: i64) -> Result<bool> {
+    pub fn idx_and_term_match(&self, idx: u128, term: u128) -> Result<bool> {
         let entry = self.get(idx)?;
-        use Payload::*;
+        use Entry::*;
         match entry {
             Command(cmd) => Ok(cmd.term == term),
-            Config(cfg) => Ok(cfg.term == term),
-            Snapshot(snap) => Ok(snap.last_included_term == term),
+            ClusterConfig(cfg) => Ok(cfg.term == term),
         }
     }
 
-    pub fn get(&self, idx: i64) -> Result<Payload> {
+    pub fn get(&self, idx: u128) -> Result<Entry> {
         match self.store.get(idx.to_be_bytes())? {
-            Some(entry) => Payload::from_ivec(entry),
+            Some(entry) => Entry::from_ivec(entry),
             None => Err(Error::Missing),
         }
     }
 
-    pub fn range(&self, start: i64, end: i64) -> Result<Vec<Payload>> {
+    pub fn range(&self, start: u128, end: u128) -> Result<Vec<Entry>> {
         let mut payloads = Vec::default();
         let start = start.to_be_bytes();
         let end = end.to_be_bytes();
@@ -91,14 +87,14 @@ impl Log {
             .map(|result| result.map(|(_, entry)| entry).map_err(Error::from))
         {
             match result {
-                Ok(v) => payloads.push(Payload::from_ivec(v)?),
+                Ok(v) => payloads.push(Entry::from_ivec(v)?),
                 Err(e) => return Err(e),
             };
         }
         Ok(payloads)
     }
 
-    pub fn dump(&self) -> Result<Vec<Payload>> {
+    pub fn dump(&self) -> Result<Vec<Entry>> {
         let mut payloads = Vec::with_capacity(self.len());
         for result in self
             .store
@@ -106,18 +102,19 @@ impl Log {
             .map(|result| result.map(|(_, entry)| entry).map_err(Error::from))
         {
             match result {
-                Ok(v) => payloads.push(Payload::from_ivec(v)?),
+                Ok(v) => payloads.push(Entry::from_ivec(v)?),
                 Err(e) => return Err(e),
             };
         }
         Ok(payloads)
     }
 
-    pub fn append_entries(&self, prev_log_idx: i64, mut entries: Vec<Entry>) -> Result<()> {
+    pub fn append_entries(&self, prev_log_idx: u128, mut entries: Vec<Entry>) -> Result<()> {
         let mut log_insert_index = prev_log_idx + 1;
-        let mut entries_insert_index: i64 = 0;
+        let mut entries_insert_index: u128 = 0;
         loop {
-            if log_insert_index >= self.len() as i64 || entries_insert_index >= entries.len() as i64
+            if log_insert_index >= self.len() as u128
+                || entries_insert_index >= entries.len() as u128
             {
                 break;
             }
@@ -132,11 +129,7 @@ impl Log {
         }
 
         for entry in entries.drain(entries_insert_index as usize..) {
-            if entry.payload.is_none() {
-                continue;
-            }
-
-            self.insert(log_insert_index, entry.payload.unwrap())?;
+            self.insert(log_insert_index, entry)?;
             log_insert_index += 1;
         }
         Ok(())
@@ -147,7 +140,7 @@ impl Log {
 #[cfg(not(tarpaulin_include))]
 mod tests {
     use super::*;
-    use crate::rpc::raft::Config;
+    use crate::raft::ClusterConfig;
 
     #[test]
     fn test_log() {
@@ -162,16 +155,17 @@ mod tests {
             .last_log_idx_and_term()
             .expect("Failed to retrieve last log idx/term.");
 
-        assert_eq!(-1, last_log_idx);
-        assert_eq!(-1, last_log_term);
+        assert_eq!(0, last_log_idx);
+        assert_eq!(0, last_log_term);
 
-        let payload = Payload::Config(Config {
+        let payload = Entry::ClusterConfig(ClusterConfig {
             term: 2,
-            peers: vec![
+            voters: vec![
                 String::from("grpc://example.com:12345"),
                 String::from("grpc://example.com:23456"),
                 String::from("grpc://example.com:34567"),
             ],
+            replicas: vec![],
         });
 
         log.append(payload.clone())

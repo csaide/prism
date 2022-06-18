@@ -5,15 +5,15 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use crate::rpc::raft::{VoteRequest, VoteResponse};
-
-use super::{Client, ElectionResult, Log, Metadata, Result};
+use super::{
+    Client, ElectionResult, Log, Metadata, RequestVoteRequest, RequestVoteResponse, Result,
+};
 
 pub struct Candidate<P> {
     logger: slog::Logger,
     metadata: Arc<Metadata<P>>,
     log: Arc<Log>,
-    saved_term: i64,
+    saved_term: u128,
 }
 
 impl<P> Candidate<P>
@@ -24,7 +24,7 @@ where
         logger: &slog::Logger,
         metadata: Arc<Metadata<P>>,
         log: Arc<Log>,
-        saved_term: i64,
+        saved_term: u128,
     ) -> Candidate<P> {
         Candidate {
             logger: logger.new(o!("module" => "candidate")),
@@ -35,7 +35,7 @@ where
     }
 
     pub async fn exec(&self) -> ElectionResult {
-        let (tx, rx) = mpsc::channel::<Result<VoteResponse>>(self.metadata.peers.len());
+        let (tx, rx) = mpsc::channel::<Result<RequestVoteResponse>>(self.metadata.peers.len());
 
         if let Err(e) = self.send_requests(tx) {
             error!(self.logger, "Failed to send vote requests."; "error" => e.to_string());
@@ -44,10 +44,10 @@ where
         self.handle_responses(rx).await
     }
 
-    pub fn send_requests(&self, tx: mpsc::Sender<Result<VoteResponse>>) -> Result<()> {
+    pub fn send_requests(&self, tx: mpsc::Sender<Result<RequestVoteResponse>>) -> Result<()> {
         let (last_log_idx, last_log_term) = self.log.last_log_idx_and_term()?;
 
-        let request = VoteRequest {
+        let request = RequestVoteRequest {
             candidate_id: self.metadata.id.clone(),
             last_log_idx,
             last_log_term,
@@ -68,7 +68,7 @@ where
 
     pub async fn handle_responses(
         &self,
-        mut rx: mpsc::Receiver<Result<VoteResponse>>,
+        mut rx: mpsc::Receiver<Result<RequestVoteResponse>>,
     ) -> ElectionResult {
         let mut votes: usize = 1;
         while let Some(resp) = rx.recv().await {
@@ -118,8 +118,7 @@ mod tests {
 
     use crate::{
         log,
-        raft::{test_harness::MockPeer, Error, Peer},
-        rpc::raft::AppendResponse,
+        raft::{test_harness::MockPeer, AppendEntriesResponse, Error, Peer},
     };
 
     use super::*;
@@ -136,9 +135,11 @@ mod tests {
         let log = Arc::new(log);
 
         let peer1 = MockPeer {
-            append_resp: Arc::new(Box::new(|| -> Result<AppendResponse> { unimplemented!() })),
-            vote_resp: Arc::new(Box::new(|| -> Result<VoteResponse> {
-                Ok(VoteResponse {
+            append_resp: Arc::new(Box::new(|| -> Result<AppendEntriesResponse> {
+                unimplemented!()
+            })),
+            vote_resp: Arc::new(Box::new(|| -> Result<RequestVoteResponse> {
+                Ok(RequestVoteResponse {
                     term: 0,
                     vote_granted: false,
                 })
@@ -168,28 +169,34 @@ mod tests {
         let log = Arc::new(log);
 
         let peer1 = MockPeer {
-            append_resp: Arc::new(Box::new(|| -> Result<AppendResponse> { unimplemented!() })),
-            vote_resp: Arc::new(Box::new(|| -> Result<VoteResponse> {
-                Ok(VoteResponse {
-                    term: -1,
+            append_resp: Arc::new(Box::new(|| -> Result<AppendEntriesResponse> {
+                unimplemented!()
+            })),
+            vote_resp: Arc::new(Box::new(|| -> Result<RequestVoteResponse> {
+                Ok(RequestVoteResponse {
+                    term: 0,
                     vote_granted: false,
                 })
             })),
         };
         let peer2 = MockPeer {
-            append_resp: Arc::new(Box::new(|| -> Result<AppendResponse> { unimplemented!() })),
-            vote_resp: Arc::new(Box::new(|| -> Result<VoteResponse> {
-                Ok(VoteResponse {
-                    term: 0,
+            append_resp: Arc::new(Box::new(|| -> Result<AppendEntriesResponse> {
+                unimplemented!()
+            })),
+            vote_resp: Arc::new(Box::new(|| -> Result<RequestVoteResponse> {
+                Ok(RequestVoteResponse {
+                    term: 1,
                     vote_granted: true,
                 })
             })),
         };
         let peer3 = MockPeer {
-            append_resp: Arc::new(Box::new(|| -> Result<AppendResponse> { unimplemented!() })),
-            vote_resp: Arc::new(Box::new(|| -> Result<VoteResponse> {
-                Ok(VoteResponse {
-                    term: 0,
+            append_resp: Arc::new(Box::new(|| -> Result<AppendEntriesResponse> {
+                unimplemented!()
+            })),
+            vote_resp: Arc::new(Box::new(|| -> Result<RequestVoteResponse> {
+                Ok(RequestVoteResponse {
+                    term: 1,
                     vote_granted: true,
                 })
             })),
@@ -223,9 +230,11 @@ mod tests {
         let log = Arc::new(log);
 
         let peer1 = MockPeer {
-            append_resp: Arc::new(Box::new(|| -> Result<AppendResponse> { unimplemented!() })),
-            vote_resp: Arc::new(Box::new(|| -> Result<VoteResponse> {
-                Ok(VoteResponse {
+            append_resp: Arc::new(Box::new(|| -> Result<AppendEntriesResponse> {
+                unimplemented!()
+            })),
+            vote_resp: Arc::new(Box::new(|| -> Result<RequestVoteResponse> {
+                Ok(RequestVoteResponse {
                     term: 1000,
                     vote_granted: false,
                 })
@@ -259,8 +268,12 @@ mod tests {
         let log = Arc::new(log);
 
         let peer1 = MockPeer {
-            append_resp: Arc::new(Box::new(|| -> Result<AppendResponse> { unimplemented!() })),
-            vote_resp: Arc::new(Box::new(|| -> Result<VoteResponse> { Err(Error::Missing) })),
+            append_resp: Arc::new(Box::new(|| -> Result<AppendEntriesResponse> {
+                unimplemented!()
+            })),
+            vote_resp: Arc::new(Box::new(|| -> Result<RequestVoteResponse> {
+                Err(Error::Missing)
+            })),
         };
         let mut peers = HashMap::default();
         peers.insert("grpc://localhost:12345".to_string(), Peer::new(peer1));
