@@ -92,6 +92,15 @@ where
     }
 }
 
+impl<C> Default for Peers<C>
+where
+    C: Client + Send + Clone + 'static,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct LockedPeers<'a, C> {
     items: MutexGuard<'a, HashMap<String, Peer<C>>>,
 }

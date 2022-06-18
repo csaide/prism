@@ -38,8 +38,14 @@ impl HashState {
             .lock()
             .unwrap()
             .iter()
-            .map(|(key, val)| (key.clone(), val.clone()))
+            .map(|(key, val)| (key.clone(), *val))
             .collect()
+    }
+}
+
+impl Default for HashState {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

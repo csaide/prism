@@ -152,93 +152,65 @@ where
         self.submit_tx.send(()).map_err(Error::from)
     }
 
-    pub async fn append(&self, mut append_request: AppendRequest) -> Result<AppendResponse> {
-        // info!(self.logger, "Executing append RPC.");
+    pub async fn append(&self, append_request: AppendRequest) -> Result<AppendResponse> {
+        debug!(self.logger, "Executing append RPC.");
 
-        let mut success = false;
+        let term = self.metadata.get_current_term();
+        let success = false;
+        let mut response = AppendResponse { success, term };
 
-        if append_request.term > self.metadata.get_current_term() {
-            debug!(self.logger, "Internal term is out of date with leader term."; "rpc" => "append", "got" => append_request.term, "have" => self.metadata.get_current_term());
+        if append_request.term > term {
+            debug!(self.logger, "Internal term is out of date with leader term."; "rpc" => "append", "got" => append_request.term, "have" => term);
             self.metadata.transition_follower(Some(append_request.term));
+            return Ok(response);
         }
 
-        if append_request.term == self.metadata.get_current_term() {
-            if !self.metadata.is_follower() {
-                debug!(self.logger, "Internal state is out of date with leader term."; "rpc" => "append", "got" => append_request.term, "have" => self.metadata.get_current_term());
-                self.metadata.transition_follower(None);
-            }
+        if append_request.term < term {
+            debug!(self.logger, "Internal term is newer than peer."; "rpc" => "append", "got" => append_request.term, "have" => term);
+            return Ok(response);
+        }
 
-            self.heartbeat_tx.send(())?;
-            if append_request.prev_log_idx == -1
-                || (append_request.prev_log_idx < self.log.len() as i64
-                    && self.log.idx_and_term_match(
-                        append_request.prev_log_idx,
-                        append_request.prev_log_term,
-                    )?)
-            {
-                success = true;
+        if !self.metadata.is_follower() {
+            debug!(self.logger, "Internal state is out of date with leader term."; "rpc" => "append", "got" => append_request.term, "have" => term);
+            self.metadata.transition_follower(None);
+            return Ok(response);
+        }
 
-                let mut log_insert_index = append_request.prev_log_idx + 1;
-                let mut entries_insert_index: i64 = 0;
-                loop {
-                    if log_insert_index >= self.log.len() as i64
-                        || entries_insert_index >= append_request.entries.len() as i64
-                    {
-                        break;
-                    }
-                    if !self.log.idx_and_term_match(
-                        log_insert_index,
-                        append_request.entries[entries_insert_index as usize].term(),
-                    )? {
-                        break;
-                    }
-                    log_insert_index += 1;
-                    entries_insert_index += 1;
-                }
+        self.heartbeat_tx.send(())?;
+        if append_request.prev_log_idx == -1
+            || (append_request.prev_log_idx < self.log.len() as i64
+                && self.log.idx_and_term_match(
+                    append_request.prev_log_idx,
+                    append_request.prev_log_term,
+                )?)
+        {
+            response.success = true;
 
-                for entry in append_request
-                    .entries
-                    .drain(entries_insert_index as usize..)
-                {
-                    if entry.payload.is_none() {
-                        continue;
-                    }
-
-                    self.log.insert(log_insert_index, entry.payload.unwrap())?;
-                    log_insert_index += 1;
-                }
-
-                let mut commit = false;
-                {
-                    if append_request.leader_commit_idx > self.metadata.get_commit_idx() {
-                        self.metadata.set_commit_idx(
-                            append_request.leader_commit_idx.min(self.log.len() as i64),
-                        );
-                        commit = true;
-                    }
-                }
-                if commit {
-                    self.commit_tx.send(())?;
-                }
+            self.log
+                .append_entries(append_request.prev_log_idx, append_request.entries)?;
+            if append_request.leader_commit_idx > self.metadata.get_commit_idx() {
+                self.metadata
+                    .set_commit_idx(append_request.leader_commit_idx.min(self.log.len() as i64));
+                self.commit_tx.send(())?;
             }
         }
 
-        Ok(AppendResponse {
-            success,
-            term: self.metadata.get_current_term(),
-        })
+        Ok(response)
     }
 
     pub async fn vote(&self, vote_request: VoteRequest) -> Result<VoteResponse> {
-        // info!(self.logger, "Executing vote RPC.");
+        debug!(self.logger, "Executing vote RPC.");
 
-        let mut vote_granted = false;
+        let term = self.metadata.get_current_term();
+        let vote_granted = false;
+        let mut response = VoteResponse { vote_granted, term };
 
         let (last_log_idx, last_log_term) = self.log.last_log_idx_and_term()?;
 
-        if vote_request.term > self.metadata.get_current_term() {
-            debug!(self.logger, "Internal term is out of date with leader term."; "rpc" => "vote", "got" => vote_request.term, "have" => self.metadata.get_current_term());
+        if vote_request.term > term {
+            debug!(self.logger, "Internal term is out of date with leader term."; "rpc" => "vote", "got" => vote_request.term, "have" => term);
             self.metadata.transition_follower(Some(vote_request.term));
+            return Ok(response);
         }
 
         let voted_for = self.metadata.get_voted_for();
@@ -248,14 +220,11 @@ where
                 || (vote_request.last_log_term == last_log_term
                     && vote_request.last_log_idx >= last_log_idx))
         {
-            vote_granted = true;
+            response.vote_granted = true;
             self.metadata.set_voted_for(Some(vote_request.candidate_id))
         }
 
-        Ok(VoteResponse {
-            vote_granted,
-            term: self.metadata.get_current_term(),
-        })
+        Ok(response)
     }
 }
 

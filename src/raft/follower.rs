@@ -28,7 +28,6 @@ impl Follower {
         loop {
             let timed_out = timeout(dur, self.heartbeat_rx.changed()).await.is_err();
 
-            // Finally if we timedout waiting for a heartbeat kickoff an election.
             if timed_out {
                 debug!(
                     self.logger,

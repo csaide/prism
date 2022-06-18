@@ -58,7 +58,6 @@ where
 
             self.handle_responses(saved_term, rx).await;
             match timeout(duration, self.submit_rx.changed()).await {
-                Err(_) => {}                         // Timed out waiting for a submit, fire heartbeat.
                 Ok(resp) if resp.is_err() => return, // Channel was closed, this is an unexpected situation, abort.
                 _ => {}                              // Happy path we got a submit, fire append.
             }
@@ -74,27 +73,22 @@ where
             let prev_log_idx = peer.next_idx - 1;
             let mut prev_log_term = -1;
             if prev_log_idx >= 0 {
-                prev_log_term = match self.log.get(prev_log_idx) {
-                    Ok(entry) => entry.term(),
-                    Err(e) => {
-                        error!(self.logger, "Failed to pull previous log entry."; "error" => e.to_string());
-                        -1
-                    }
-                };
+                prev_log_term = self
+                    .log
+                    .get(prev_log_idx)
+                    .map(|entry| entry.term())
+                    .unwrap_or(-1);
             }
 
-            let entries = match self.log.range(peer.next_idx, i64::MAX) {
-                Ok(mut entries) => entries
-                    .drain(..)
-                    .map(|payload| Entry {
-                        payload: Some(payload),
-                    })
-                    .collect(),
-                Err(e) => {
-                    error!(self.logger, "Failed to return range of entries."; "error" => e.to_string());
-                    Vec::default()
-                }
-            };
+            let entries = self
+                .log
+                .range(peer.next_idx, i64::MAX)
+                .unwrap_or(Vec::default())
+                .drain(..)
+                .map(|payload| Entry {
+                    payload: Some(payload),
+                })
+                .collect();
 
             let req = AppendRequest {
                 leader_commit_idx: self.metadata.get_commit_idx(),
@@ -121,8 +115,8 @@ where
         saved_term: i64,
         mut rx: mpsc::Receiver<(usize, String, Result<AppendResponse>)>,
     ) {
-        while let Some(resp) = rx.recv().await {
-            let (entries, peer_id, resp) = resp;
+        while let Some(evt) = rx.recv().await {
+            let (entries, peer_id, resp) = evt;
             let resp = match resp {
                 Ok(resp) => resp,
                 Err(e) => {

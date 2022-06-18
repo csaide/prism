@@ -72,6 +72,10 @@ where
     ) -> ElectionResult {
         let mut votes: usize = 1;
         while let Some(resp) = rx.recv().await {
+            if !self.metadata.is_candidate() {
+                return ElectionResult::Failed;
+            }
+
             let resp = match resp {
                 Ok(resp) => resp,
                 Err(e) => {
@@ -80,10 +84,6 @@ where
                 }
             };
 
-            if !self.metadata.is_candidate() {
-                return ElectionResult::Failed;
-            }
-
             if resp.term > self.saved_term {
                 debug!(
                     self.logger,
@@ -91,13 +91,15 @@ where
                 );
                 self.metadata.transition_follower(Some(resp.term));
                 return ElectionResult::Failed;
-            } else if resp.term < self.saved_term {
+            }
+            if resp.term < self.saved_term {
                 debug!(
                     self.logger,
                     "Encountered response with older term, ignoring."
                 );
                 continue;
-            } else if resp.vote_granted {
+            }
+            if resp.vote_granted {
                 votes += 1;
                 if votes * 2 > self.metadata.peers.len() {
                     return ElectionResult::Success;

@@ -3,7 +3,7 @@
 
 use sled::IVec;
 
-use crate::rpc::raft::Payload;
+use crate::rpc::raft::{Entry, Payload};
 
 use super::{Error, Result};
 
@@ -111,6 +111,35 @@ impl Log {
             };
         }
         Ok(payloads)
+    }
+
+    pub fn append_entries(&self, prev_log_idx: i64, mut entries: Vec<Entry>) -> Result<()> {
+        let mut log_insert_index = prev_log_idx + 1;
+        let mut entries_insert_index: i64 = 0;
+        loop {
+            if log_insert_index >= self.len() as i64 || entries_insert_index >= entries.len() as i64
+            {
+                break;
+            }
+            if !self.idx_and_term_match(
+                log_insert_index,
+                entries[entries_insert_index as usize].term(),
+            )? {
+                break;
+            }
+            log_insert_index += 1;
+            entries_insert_index += 1;
+        }
+
+        for entry in entries.drain(entries_insert_index as usize..) {
+            if entry.payload.is_none() {
+                continue;
+            }
+
+            self.insert(log_insert_index, entry.payload.unwrap())?;
+            log_insert_index += 1;
+        }
+        Ok(())
     }
 }
 

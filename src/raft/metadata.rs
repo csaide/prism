@@ -50,7 +50,7 @@ impl PersistentState {
                 .try_into()
                 .map(i64::from_be_bytes)
                 .map_err(Error::from),
-            None => Ok(-1),
+            None => Ok(0),
         }
     }
 
@@ -60,28 +60,26 @@ impl PersistentState {
     }
 
     pub fn incr_current_term(&self) -> Result<i64> {
-        match self.tree.fetch_and_update(
-            "current_term",
-            |old: Option<&[u8]>| -> Option<Vec<u8>> {
+        self.tree
+            .update_and_fetch("current_term", |old: Option<&[u8]>| -> Option<Vec<u8>> {
                 let number = match old {
                     Some(bytes) => {
                         let array: [u8; 8] = bytes.try_into().unwrap();
-                        let number = u64::from_be_bytes(array);
+                        let number = i64::from_be_bytes(array);
                         number + 1
                     }
                     None => 0,
                 };
 
                 Some(number.to_be_bytes().to_vec())
-            },
-        )? {
-            Some(ivec) => ivec
-                .as_ref()
-                .try_into()
-                .map(i64::from_be_bytes)
-                .map_err(Error::from),
-            None => Ok(-1),
-        }
+            })?
+            .map(|ivec| {
+                ivec.as_ref()
+                    .try_into()
+                    .map(i64::from_be_bytes)
+                    .map_err(Error::from)
+            })
+            .unwrap_or(Ok(0))
     }
 }
 
@@ -141,27 +139,17 @@ where
     }
 
     pub fn set_current_term(&self, term: i64) {
-        if let Err(_) = self.persistent.set_current_term(term) {
-            unreachable!()
-        }
+        self.persistent.set_current_term(term).unwrap();
     }
     pub fn get_current_term(&self) -> i64 {
-        match self.persistent.get_current_term() {
-            Ok(term) => term,
-            Err(_) => unreachable!(),
-        }
+        self.persistent.get_current_term().unwrap()
     }
     pub fn set_voted_for(&self, voted_for: Option<String>) {
-        if let Err(_) = self.persistent.set_voted_for(voted_for) {
-            unreachable!()
-        }
+        self.persistent.set_voted_for(voted_for).unwrap();
     }
 
     pub fn get_voted_for(&self) -> Option<String> {
-        match self.persistent.get_voted_for() {
-            Ok(voted_for) => voted_for,
-            Err(_) => unreachable!(),
-        }
+        self.persistent.get_voted_for().unwrap()
     }
 
     pub fn set_commit_idx(&self, commit_idx: i64) {
@@ -183,10 +171,7 @@ where
     }
 
     pub fn incr_current_term(&self) -> i64 {
-        match self.persistent.incr_current_term() {
-            Ok(term) => term,
-            Err(_) => 0,
-        }
+        self.persistent.incr_current_term().unwrap_or(0)
     }
 
     pub fn transition_follower(&self, term: Option<i64>) {

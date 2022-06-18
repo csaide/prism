@@ -39,20 +39,20 @@ where
     }
 
     pub async fn exec(&mut self) {
-        while let Ok(_) = self.commit_rx.changed().await {
+        while self.commit_rx.changed().await.is_ok() {
             let last_applied_idx = self.metadata.get_last_applied_idx();
             let commit_idx = self.metadata.get_commit_idx();
 
-            let mut entries = if commit_idx > last_applied_idx {
-                match self.log.range(last_applied_idx + 1, commit_idx + 1) {
-                    Ok(entries) => entries,
-                    Err(e) => {
-                        error!(self.logger, "Failed to pull new log entries to apply."; "error" => e.to_string());
-                        continue;
-                    }
-                }
-            } else {
+            if commit_idx <= last_applied_idx {
                 continue;
+            };
+
+            let mut entries = match self.log.range(last_applied_idx + 1, commit_idx + 1) {
+                Ok(entries) => entries,
+                Err(e) => {
+                    error!(self.logger, "Failed to pull new log entries to apply."; "error" => e.to_string());
+                    continue;
+                }
             };
 
             for entry in entries.drain(..) {
@@ -63,7 +63,7 @@ where
                 }
             }
 
-            self.metadata.set_commit_idx(commit_idx);
+            self.metadata.set_last_applied_idx(commit_idx);
         }
     }
 }
