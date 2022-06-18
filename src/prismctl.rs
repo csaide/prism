@@ -1,6 +1,8 @@
 // (c) Copyright 2022 Christian Saide
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::collections::HashMap;
+
 use exitcode::ExitCode;
 use structopt::clap::{crate_version, AppSettings};
 use structopt::StructOpt;
@@ -45,7 +47,7 @@ pub async fn run() -> ExitCode {
     let sm1 = hash::HashState::new();
     let mut cm1 = ConsensusMod::new(
         addr1.to_string(),
-        Vec::default(),
+        HashMap::default(),
         &root_logger,
         &db1,
         sm1.clone(),
@@ -58,7 +60,7 @@ pub async fn run() -> ExitCode {
     let sm2 = hash::HashState::new();
     let mut cm2 = ConsensusMod::new(
         addr2.to_string(),
-        Vec::default(),
+        HashMap::default(),
         &root_logger,
         &db2,
         sm2.clone(),
@@ -71,7 +73,7 @@ pub async fn run() -> ExitCode {
     let sm3 = hash::HashState::new();
     let mut cm3 = ConsensusMod::new(
         addr3.to_string(),
-        Vec::default(),
+        HashMap::default(),
         &root_logger,
         &db3,
         sm3.clone(),
@@ -154,14 +156,14 @@ pub async fn run() -> ExitCode {
     let peer2 = Peer::new(RaftServiceClient::connect(addr2).await.unwrap());
     let peer3 = Peer::new(RaftServiceClient::connect(addr3).await.unwrap());
 
-    cm1.append_peer(peer2.clone());
-    cm1.append_peer(peer3.clone());
+    cm1.append_peer(addr2.to_string(), peer2.clone());
+    cm1.append_peer(addr3.to_string(), peer3.clone());
 
-    cm2.append_peer(peer1.clone());
-    cm2.append_peer(peer3.clone());
+    cm2.append_peer(addr1.to_string(), peer1.clone());
+    cm2.append_peer(addr3.to_string(), peer3.clone());
 
-    cm3.append_peer(peer1.clone());
-    cm3.append_peer(peer2.clone());
+    cm3.append_peer(addr1.to_string(), peer1.clone());
+    cm3.append_peer(addr2.to_string(), peer2.clone());
 
     select! {
         _ = cm1.start() => {

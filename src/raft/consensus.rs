@@ -1,6 +1,7 @@
 // (c) Copyright 2022 Christian Saide
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use tokio::sync::watch::{self, Receiver, Sender};
@@ -38,7 +39,7 @@ where
 {
     pub fn new(
         id: String,
-        peers: Vec<Peer<P>>,
+        peers: HashMap<String, Peer<P>>,
         logger: &slog::Logger,
         db: &sled::Db,
         state_machine: S,
@@ -63,8 +64,8 @@ where
         })
     }
 
-    pub fn append_peer(&self, peer: Peer<P>) {
-        self.metadata.peers.append(peer);
+    pub fn append_peer(&self, id: String, peer: Peer<P>) {
+        self.metadata.peers.append(id, peer);
     }
 
     pub fn is_leader(&self) -> bool {

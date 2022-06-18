@@ -54,7 +54,7 @@ where
             term: self.saved_term,
         };
 
-        for peer in self.metadata.peers.lock().iter() {
+        for (_, peer) in self.metadata.peers.lock().iter() {
             let mut cli = peer.clone();
             let req = request.clone();
             let tx = tx.clone();
@@ -112,6 +112,8 @@ where
 #[cfg(test)]
 #[cfg(not(tarpaulin_include))]
 mod tests {
+    use std::collections::HashMap;
+
     use crate::{
         log,
         raft::{test_harness::MockPeer, Error, Peer},
@@ -140,7 +142,8 @@ mod tests {
                 })
             })),
         };
-        let peers = vec![Peer::new(peer1)];
+        let mut peers = HashMap::default();
+        peers.insert("grpc://localhost:12345".to_string(), Peer::new(peer1));
         let metadata = Arc::new(
             Metadata::new(String::from("testing"), peers, &db)
                 .expect("Failed to create metadata instance."),
@@ -189,7 +192,11 @@ mod tests {
                 })
             })),
         };
-        let peers = vec![Peer::new(peer1), Peer::new(peer2), Peer::new(peer3)];
+
+        let mut peers = HashMap::default();
+        peers.insert("grpc://localhost:12345".to_string(), Peer::new(peer1));
+        peers.insert("grpc://localhost:12346".to_string(), Peer::new(peer2));
+        peers.insert("grpc://localhost:12347".to_string(), Peer::new(peer3));
 
         let metadata = Arc::new(
             Metadata::new(String::from("testing"), peers, &db)
@@ -222,7 +229,8 @@ mod tests {
                 })
             })),
         };
-        let peers = vec![Peer::new(peer1)];
+        let mut peers = HashMap::default();
+        peers.insert("grpc://localhost:12345".to_string(), Peer::new(peer1));
 
         let metadata = Arc::new(
             Metadata::new(String::from("testing"), peers, &db)
@@ -252,7 +260,8 @@ mod tests {
             append_resp: Arc::new(Box::new(|| -> Result<AppendResponse> { unimplemented!() })),
             vote_resp: Arc::new(Box::new(|| -> Result<VoteResponse> { Err(Error::Missing) })),
         };
-        let peers = vec![Peer::new(peer1)];
+        let mut peers = HashMap::default();
+        peers.insert("grpc://localhost:12345".to_string(), Peer::new(peer1));
 
         let metadata = Arc::new(
             Metadata::new(String::from("testing"), peers, &db)

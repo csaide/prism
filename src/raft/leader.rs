@@ -52,7 +52,7 @@ where
             let saved_term = self.metadata.get_current_term();
 
             let (tx, rx) =
-                mpsc::channel::<(usize, usize, Result<AppendResponse>)>(self.metadata.peers.len());
+                mpsc::channel::<(usize, String, Result<AppendResponse>)>(self.metadata.peers.len());
             self.send_requests(saved_term, &tx);
             drop(tx);
 
@@ -68,9 +68,9 @@ where
     pub fn send_requests(
         &self,
         saved_term: i64,
-        tx: &mpsc::Sender<(usize, usize, Result<AppendResponse>)>,
+        tx: &mpsc::Sender<(usize, String, Result<AppendResponse>)>,
     ) {
-        for (peer_idx, peer) in self.metadata.peers.lock().iter().enumerate() {
+        for (peer_id, peer) in self.metadata.peers.lock().iter() {
             let prev_log_idx = peer.next_idx - 1;
             let mut prev_log_term = -1;
             if prev_log_idx >= 0 {
@@ -107,10 +107,11 @@ where
 
             let mut cli = peer.clone();
             let tx = tx.clone();
+            let id = peer_id.clone();
             tokio::task::spawn(async move {
                 let entries = req.entries.len();
                 let resp = cli.append(req).await;
-                let _ = tx.send((entries, peer_idx, resp)).await;
+                let _ = tx.send((entries, id, resp)).await;
             });
         }
     }
@@ -118,10 +119,10 @@ where
     pub async fn handle_responses(
         &self,
         saved_term: i64,
-        mut rx: mpsc::Receiver<(usize, usize, Result<AppendResponse>)>,
+        mut rx: mpsc::Receiver<(usize, String, Result<AppendResponse>)>,
     ) {
         while let Some(resp) = rx.recv().await {
-            let (entries, peer_idx, resp) = resp;
+            let (entries, peer_id, resp) = resp;
             let resp = match resp {
                 Ok(resp) => resp,
                 Err(e) => {
@@ -143,7 +144,10 @@ where
 
             let mut commit = false;
             let mut locked_peers = self.metadata.peers.lock();
-            let mut peer = locked_peers.get_mut(peer_idx);
+            let mut peer = match locked_peers.get_mut(&peer_id) {
+                Some(peer) => peer,
+                None => continue,
+            };
             if resp.success {
                 peer.next_idx += entries as i64;
                 peer.match_idx = peer.next_idx - 1;
@@ -162,7 +166,7 @@ where
                         continue;
                     }
                     let mut matches = 1;
-                    for peer in locked_peers.iter() {
+                    for (_, peer) in locked_peers.iter() {
                         if peer.match_idx >= idx {
                             matches += 1;
                         }

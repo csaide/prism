@@ -1,6 +1,7 @@
 // (c) Copyright 2022 Christian Saide
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::collections::HashMap;
 use std::sync::RwLock;
 
 use super::{Client, Error, Peer, Peers, Result};
@@ -102,7 +103,7 @@ impl<P> Metadata<P>
 where
     P: Client + Send + Clone + 'static,
 {
-    pub fn new(id: String, peers: Vec<Peer<P>>, db: &sled::Db) -> Result<Metadata<P>> {
+    pub fn new(id: String, peers: HashMap<String, Peer<P>>, db: &sled::Db) -> Result<Metadata<P>> {
         let peers = Peers::bootstrap(peers);
         let persistent = PersistentState::new(db)?;
         Ok(Metadata {

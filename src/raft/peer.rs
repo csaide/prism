@@ -1,6 +1,7 @@
 // (c) Copyright 2022 Christian Saide
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 
 use super::Result;
@@ -47,7 +48,7 @@ where
 
 #[derive(Debug)]
 pub struct Peers<C> {
-    peers: Mutex<Vec<Peer<C>>>,
+    peers: Mutex<HashMap<String, Peer<C>>>,
 }
 
 impl<C> Peers<C>
@@ -55,11 +56,11 @@ where
     C: Client + Send + Clone + 'static,
 {
     pub fn new() -> Peers<C> {
-        let peers = Mutex::new(Vec::default());
+        let peers = Mutex::new(HashMap::default());
         Peers { peers }
     }
 
-    pub fn bootstrap(initial_peers: Vec<Peer<C>>) -> Peers<C> {
+    pub fn bootstrap(initial_peers: HashMap<String, Peer<C>>) -> Peers<C> {
         let peers = Mutex::new(initial_peers);
         Peers { peers }
     }
@@ -72,8 +73,8 @@ where
         self.peers.lock().unwrap().is_empty()
     }
 
-    pub fn append(&self, peer: Peer<C>) {
-        self.peers.lock().unwrap().push(peer)
+    pub fn append(&self, id: String, peer: Peer<C>) {
+        self.peers.lock().unwrap().insert(id, peer);
     }
 
     pub fn reset(&self, last_log_idx: i64) {
@@ -81,7 +82,7 @@ where
             .lock()
             .unwrap()
             .iter_mut()
-            .for_each(|peer| peer.reset(last_log_idx))
+            .for_each(|(_, peer)| peer.reset(last_log_idx))
     }
 
     pub fn lock(&self) -> LockedPeers<'_, C> {
@@ -92,7 +93,7 @@ where
 }
 
 pub struct LockedPeers<'a, C> {
-    items: MutexGuard<'a, Vec<Peer<C>>>,
+    items: MutexGuard<'a, HashMap<String, Peer<C>>>,
 }
 
 impl<'a, C> LockedPeers<'a, C> {
@@ -100,19 +101,23 @@ impl<'a, C> LockedPeers<'a, C> {
         self.items.len()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Peer<C>> {
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &Peer<C>)> {
         self.items.iter()
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Peer<C>> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&String, &mut Peer<C>)> {
         self.items.iter_mut()
     }
 
-    pub fn get(&self, index: usize) -> &Peer<C> {
-        &self.items[index]
+    pub fn get(&self, id: &String) -> Option<&Peer<C>> {
+        self.items.get(id)
     }
 
-    pub fn get_mut(&mut self, index: usize) -> &mut Peer<C> {
-        &mut self.items[index]
+    pub fn get_mut(&mut self, id: &String) -> Option<&mut Peer<C>> {
+        self.items.get_mut(id)
     }
 }
