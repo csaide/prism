@@ -86,12 +86,14 @@ pub async fn run() -> ExitCode {
 
     let submit_logger = root_logger.clone();
     let submit = async move {
-        let payload = Command::Insert(String::from("hello"), 42);
-        let payload = payload.to_bytes();
-
         let mut interval = interval(Duration::from_secs(1));
+        let mut idx = 0;
         loop {
+            let payload = Command::Insert(String::from("hello"), idx);
+            let payload = payload.to_bytes();
+
             interval.tick().await;
+
             if cm_submit1.is_leader() {
                 cm_submit1.submit(payload.clone()).await.unwrap();
             } else if cm_submit2.is_leader() {
@@ -121,6 +123,8 @@ pub async fn run() -> ExitCode {
             for entry in cm_submit3.dump().unwrap() {
                 info!(submit_logger, "CM3 Entry: {:?}", entry);
             }
+
+            idx += 1;
         }
     };
 

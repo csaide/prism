@@ -11,8 +11,7 @@ use crate::rpc::raft::{
 };
 
 use super::{
-    Candidate, Client, ElectionResult, Error, Follower, Log, Metadata, Peer, Result, State,
-    StateMachine,
+    Candidate, Client, ElectionResult, Error, Follower, Log, Metadata, Peer, Result, StateMachine,
 };
 
 #[derive(Debug, Clone)]
@@ -52,7 +51,7 @@ where
         let log = Log::new(db)?;
         Ok(ConsensusMod {
             logger,
-            metadata: Arc::new(Metadata::new(id, peers)),
+            metadata: Arc::new(Metadata::new(id, peers, db)?),
             log: Arc::new(log),
             state_machine: Arc::new(state_machine),
             heartbeat_tx: Arc::new(heartbeat_tx),
@@ -65,7 +64,7 @@ where
     }
 
     pub fn append_peer(&self, peer: Peer<P>) {
-        self.metadata.peers.lock().unwrap().push(peer);
+        self.metadata.peers.append(peer);
     }
 
     pub fn is_leader(&self) -> bool {
@@ -143,9 +142,9 @@ where
             return Err(Error::InvalidState);
         }
 
-        let current_term = self.metadata.current_term.read().unwrap();
+        let current_term = self.metadata.get_current_term();
         self.log.append(Payload::Command(Command {
-            term: *current_term,
+            term: current_term,
             data: command,
         }))?;
 
@@ -157,14 +156,14 @@ where
 
         let mut success = false;
 
-        if append_request.term > *self.metadata.current_term.read().unwrap() {
-            debug!(self.logger, "Internal term is out of date with leader term."; "rpc" => "append", "got" => append_request.term, "have" => *self.metadata.current_term.read().unwrap());
+        if append_request.term > self.metadata.get_current_term() {
+            debug!(self.logger, "Internal term is out of date with leader term."; "rpc" => "append", "got" => append_request.term, "have" => self.metadata.get_current_term());
             self.metadata.transition_follower(Some(append_request.term));
         }
 
-        if append_request.term == *self.metadata.current_term.read().unwrap() {
-            if *self.metadata.state.read().unwrap() != State::Follower {
-                debug!(self.logger, "Internal state is out of date with leader term."; "rpc" => "append", "got" => append_request.term, "have" => *self.metadata.current_term.read().unwrap());
+        if append_request.term == self.metadata.get_current_term() {
+            if !self.metadata.is_follower() {
+                debug!(self.logger, "Internal state is out of date with leader term."; "rpc" => "append", "got" => append_request.term, "have" => self.metadata.get_current_term());
                 self.metadata.transition_follower(None);
             }
 
@@ -210,9 +209,10 @@ where
 
                 let mut commit = false;
                 {
-                    let mut commit_idx = self.metadata.commit_idx.write().unwrap();
-                    if append_request.leader_commit_idx > *commit_idx {
-                        *commit_idx = append_request.leader_commit_idx.min(self.log.len() as i64);
+                    if append_request.leader_commit_idx > self.metadata.get_commit_idx() {
+                        self.metadata.set_commit_idx(
+                            append_request.leader_commit_idx.min(self.log.len() as i64),
+                        );
                         commit = true;
                     }
                 }
@@ -224,7 +224,7 @@ where
 
         Ok(AppendResponse {
             success,
-            term: *self.metadata.current_term.read().unwrap(),
+            term: self.metadata.get_current_term(),
         })
     }
 
@@ -235,13 +235,12 @@ where
 
         let (last_log_idx, last_log_term) = self.log.last_log_idx_and_term()?;
 
-        if vote_request.term > *self.metadata.current_term.read().unwrap() {
-            debug!(self.logger, "Internal term is out of date with leader term."; "rpc" => "vote", "got" => vote_request.term, "have" => *self.metadata.current_term.read().unwrap());
+        if vote_request.term > self.metadata.get_current_term() {
+            debug!(self.logger, "Internal term is out of date with leader term."; "rpc" => "vote", "got" => vote_request.term, "have" => self.metadata.get_current_term());
             self.metadata.transition_follower(Some(vote_request.term));
         }
 
-        let mut voted_for = self.metadata.voted_for.write().unwrap();
-
+        let voted_for = self.metadata.get_voted_for();
         if self.metadata.matches_term(vote_request.term)
             && (voted_for.is_none() || voted_for.as_ref().unwrap() == &vote_request.candidate_id)
             && (vote_request.last_log_term > last_log_term
@@ -249,12 +248,12 @@ where
                     && vote_request.last_log_idx >= last_log_idx))
         {
             vote_granted = true;
-            *voted_for = Some(vote_request.candidate_id);
+            self.metadata.set_voted_for(Some(vote_request.candidate_id))
         }
 
         Ok(VoteResponse {
             vote_granted,
-            term: *self.metadata.current_term.read().unwrap(),
+            term: self.metadata.get_current_term(),
         })
     }
 }

@@ -64,7 +64,8 @@ pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
 
 pub use handler::Handler;
 pub use proto::{
-    entry::Payload, AppendRequest, AppendResponse, Command, Config, Entry, Snapshot, VoteRequest,
-    VoteResponse,
+    entry::Payload, raft_service_client::RaftServiceClient, raft_service_server::RaftServiceServer,
 };
-pub use proto::{raft_service_client::RaftServiceClient, raft_service_server::RaftServiceServer};
+pub use proto::{
+    AppendRequest, AppendResponse, Command, Config, Entry, Snapshot, VoteRequest, VoteResponse,
+};

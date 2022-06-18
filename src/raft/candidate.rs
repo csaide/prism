@@ -35,8 +35,7 @@ where
     }
 
     pub async fn exec(&self) -> ElectionResult {
-        let (tx, rx) =
-            mpsc::channel::<Result<VoteResponse>>(self.metadata.peers.lock().unwrap().len());
+        let (tx, rx) = mpsc::channel::<Result<VoteResponse>>(self.metadata.peers.len());
 
         if let Err(e) = self.send_requests(tx) {
             error!(self.logger, "Failed to send vote requests."; "error" => e.to_string());
@@ -55,8 +54,7 @@ where
             term: self.saved_term,
         };
 
-        let peers = self.metadata.peers.lock().unwrap();
-        for peer in &*peers {
+        for peer in self.metadata.peers.lock().iter() {
             let mut cli = peer.clone();
             let req = request.clone();
             let tx = tx.clone();
@@ -101,8 +99,7 @@ where
                 continue;
             } else if resp.vote_granted {
                 votes += 1;
-                let peers = self.metadata.peers.lock().unwrap();
-                if votes * 2 > peers.len() {
+                if votes * 2 > self.metadata.peers.len() {
                     return ElectionResult::Success;
                 }
             }
@@ -117,7 +114,7 @@ where
 mod tests {
     use crate::{
         log,
-        raft::{test_harness::MockPeer, Error, Peer, State},
+        raft::{test_harness::MockPeer, Error, Peer},
         rpc::raft::AppendResponse,
     };
 
@@ -144,7 +141,10 @@ mod tests {
             })),
         };
         let peers = vec![Peer::new(peer1)];
-        let metadata = Arc::new(Metadata::new(String::from("testing"), peers));
+        let metadata = Arc::new(
+            Metadata::new(String::from("testing"), peers, &db)
+                .expect("Failed to create metadata instance."),
+        );
 
         let candidate = Candidate::new(&logger, metadata.clone(), log, 0);
         let result = tokio_test::block_on(candidate.exec());
@@ -191,7 +191,10 @@ mod tests {
         };
         let peers = vec![Peer::new(peer1), Peer::new(peer2), Peer::new(peer3)];
 
-        let metadata = Arc::new(Metadata::new(String::from("testing"), peers));
+        let metadata = Arc::new(
+            Metadata::new(String::from("testing"), peers, &db)
+                .expect("Failed to create metadata instance."),
+        );
         let saved_term = metadata.transition_candidate();
 
         let candidate = Candidate::new(&logger, metadata.clone(), log, saved_term);
@@ -221,15 +224,17 @@ mod tests {
         };
         let peers = vec![Peer::new(peer1)];
 
-        let metadata = Arc::new(Metadata::new(String::from("testing"), peers));
+        let metadata = Arc::new(
+            Metadata::new(String::from("testing"), peers, &db)
+                .expect("Failed to generate metadata instance."),
+        );
         let saved_term = metadata.transition_candidate();
 
         let candidate = Candidate::new(&logger, metadata.clone(), log, saved_term);
         let result = tokio_test::block_on(candidate.exec());
 
         assert_eq!(result, ElectionResult::Failed);
-        let state = metadata.state.read().unwrap();
-        assert_eq!(State::Follower, *state)
+        assert!(metadata.is_follower())
     }
 
     #[test]
@@ -249,7 +254,10 @@ mod tests {
         };
         let peers = vec![Peer::new(peer1)];
 
-        let metadata = Arc::new(Metadata::new(String::from("testing"), peers));
+        let metadata = Arc::new(
+            Metadata::new(String::from("testing"), peers, &db)
+                .expect("Failed to generate metadata instance"),
+        );
 
         let saved_term = 10;
         let candidate = Candidate::new(&logger, metadata, log, saved_term);

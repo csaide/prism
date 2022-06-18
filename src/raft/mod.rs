@@ -25,5 +25,5 @@ pub use leader::Leader;
 pub use log::Log;
 pub use metadata::{Metadata, State};
 pub use models::*;
-pub use peer::{Client, Peer};
+pub use peer::{Client, Peer, Peers};
 pub use state_machine::StateMachine;

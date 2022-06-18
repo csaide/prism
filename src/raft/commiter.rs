@@ -19,7 +19,7 @@ pub struct Commiter<P, S> {
 
 impl<P, S> Commiter<P, S>
 where
-    P: Client,
+    P: Client + Clone,
     S: StateMachine,
 {
     pub fn new(
@@ -40,11 +40,11 @@ where
 
     pub async fn exec(&mut self) {
         while let Ok(_) = self.commit_rx.changed().await {
-            let mut last_applied_idx = self.metadata.last_applied_idx.write().unwrap();
-            let commit_idx = self.metadata.commit_idx.write().unwrap();
+            let last_applied_idx = self.metadata.get_last_applied_idx();
+            let commit_idx = self.metadata.get_commit_idx();
 
-            let mut entries = if *commit_idx > *last_applied_idx {
-                match self.log.range(*last_applied_idx + 1, *commit_idx + 1) {
+            let mut entries = if commit_idx > last_applied_idx {
+                match self.log.range(last_applied_idx + 1, commit_idx + 1) {
                     Ok(entries) => entries,
                     Err(e) => {
                         error!(self.logger, "Failed to pull new log entries to apply."; "error" => e.to_string());
@@ -63,7 +63,7 @@ where
                 }
             }
 
-            *last_applied_idx = *commit_idx;
+            self.metadata.set_commit_idx(commit_idx);
         }
     }
 }

@@ -1,0 +1,31 @@
+// (c) Copyright 2022 Christian Saide
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+syntax = "proto3";
+
+package cluster;
+
+message LisMemberstRequest {}
+
+message LisMemberstResponse {
+    repeated string members = 1;
+}
+
+message AddMemberRequest {
+    string id = 1;
+}
+
+message AddMemberResponse {}
+
+message RemoveMemberRequest {
+    string id = 1;
+}
+
+message RemoveMemberResponse {}
+
+// The [Cluster] exposes raft cluster membership RPC's.
+service Cluster {
+    rpc List (LisMemberstRequest) returns (LisMemberstResponse);
+    rpc Add (AddMemberRequest) returns (AddMemberResponse);
+    rpc Remove (RemoveMemberRequest) returns (RemoveMemberResponse);
+}

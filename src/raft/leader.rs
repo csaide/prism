@@ -45,19 +45,14 @@ where
                 return;
             }
         };
-        if let Err(e) = self.metadata.transition_leader(last_log_idx) {
-            error!(self.logger, "Failed to transition self to leader."; "error" => e.to_string());
-            self.metadata.transition_follower(None);
-            return;
-        }
+        self.metadata.transition_leader(last_log_idx);
 
         let duration = Duration::from_millis(50);
         while self.metadata.is_leader() {
-            let saved_term = *self.metadata.current_term.read().unwrap();
+            let saved_term = self.metadata.get_current_term();
 
-            let (tx, rx) = mpsc::channel::<(usize, usize, Result<AppendResponse>)>(
-                self.metadata.peers.lock().unwrap().len(),
-            );
+            let (tx, rx) =
+                mpsc::channel::<(usize, usize, Result<AppendResponse>)>(self.metadata.peers.len());
             self.send_requests(saved_term, &tx);
             drop(tx);
 
@@ -75,8 +70,7 @@ where
         saved_term: i64,
         tx: &mpsc::Sender<(usize, usize, Result<AppendResponse>)>,
     ) {
-        let peers = self.metadata.peers.lock().unwrap();
-        for (peer_idx, peer) in peers.iter().enumerate() {
+        for (peer_idx, peer) in self.metadata.peers.lock().iter().enumerate() {
             let prev_log_idx = peer.next_idx - 1;
             let mut prev_log_term = -1;
             if prev_log_idx >= 0 {
@@ -103,7 +97,7 @@ where
             };
 
             let req = AppendRequest {
-                leader_commit_idx: *self.metadata.commit_idx.read().unwrap(),
+                leader_commit_idx: self.metadata.get_commit_idx(),
                 leader_id: self.metadata.id.clone(),
                 prev_log_idx,
                 prev_log_term,
@@ -148,13 +142,13 @@ where
             }
 
             let mut commit = false;
-            let mut peers = self.metadata.peers.lock().unwrap();
-            let mut peer = &mut peers[peer_idx];
+            let mut locked_peers = self.metadata.peers.lock();
+            let mut peer = locked_peers.get_mut(peer_idx);
             if resp.success {
                 peer.next_idx += entries as i64;
                 peer.match_idx = peer.next_idx - 1;
 
-                let saved_commit = *self.metadata.commit_idx.read().unwrap();
+                let saved_commit = self.metadata.get_commit_idx();
                 let start = saved_commit + 1;
                 for idx in start..self.log.len() as i64 {
                     let entry = match self.log.get(idx) {
@@ -168,17 +162,16 @@ where
                         continue;
                     }
                     let mut matches = 1;
-                    for peer in peers.iter() {
+                    for peer in locked_peers.iter() {
                         if peer.match_idx >= idx {
                             matches += 1;
                         }
                     }
-                    if matches * 2 > peers.len() {
-                        let mut commit_idx = self.metadata.commit_idx.write().unwrap();
-                        *commit_idx = idx;
+                    if matches * 2 > locked_peers.len() {
+                        self.metadata.set_commit_idx(idx);
                     }
                 }
-                if saved_commit != *self.metadata.commit_idx.read().unwrap() {
+                if saved_commit != self.metadata.get_commit_idx() {
                     commit = true;
                 }
             } else {

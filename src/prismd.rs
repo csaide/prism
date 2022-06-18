@@ -20,6 +20,26 @@ const PRISMD: &str = "prismd";
 struct PrismdConfig {
     #[structopt(flatten)]
     log_config: log::Config,
+    #[structopt(
+        long = "rpc-port",
+        short = "p",
+        env = "PRISM_RPC_PORT",
+        help = "The port to listen on for server to server communication.",
+        long_help = "Sets the port to use for server to server RPC's including heartbeat, replication, and leader elections.",
+        default_value = "8080",
+        takes_value = true
+    )]
+    rpc_port: u16,
+    #[structopt(
+        long = "db-path",
+        short = "d",
+        env = "PRISM_DB_PATH",
+        help = "The top level directory path to store application data.",
+        long_help = "Sets the port to use for server to server RPC's including heartbeat, replication, and leader elections.",
+        default_value = "8080",
+        takes_value = true
+    )]
+    db_path: String,
 }
 
 pub async fn run() -> ExitCode {
