@@ -129,4 +129,14 @@ impl<'a, C> LockedPeers<'a, C> {
     pub fn get_mut(&mut self, id: &String) -> Option<&mut Peer<C>> {
         self.items.get_mut(id)
     }
+
+    pub fn idx_matches(&self, idx: i64) -> bool {
+        let mut matches = 1;
+        for (_, peer) in self.items.iter() {
+            if peer.match_idx >= idx {
+                matches += 1;
+            }
+        }
+        matches * 2 > self.len()
+    }
 }

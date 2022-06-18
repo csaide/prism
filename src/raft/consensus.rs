@@ -153,37 +153,40 @@ where
     }
 
     pub async fn append(&self, append_request: AppendRequest) -> Result<AppendResponse> {
-        debug!(self.logger, "Executing append RPC.");
+        let log_ok = |append_request: &AppendRequest| -> Result<bool> {
+            Ok(append_request.prev_log_idx == -1
+                || (append_request.prev_log_idx < self.log.len() as i64
+                    && self.log.idx_and_term_match(
+                        append_request.prev_log_idx,
+                        append_request.prev_log_term,
+                    )?))
+        };
+
+        let term = self.metadata.get_current_term();
+        if append_request.term > term {
+            debug!(self.logger, "Internal term is out of date with leader term.";
+                "rpc" => "append",
+                "got" => append_request.term,
+                "have" => term,
+            );
+            self.metadata.transition_follower(Some(append_request.term));
+        } else if append_request.term == term && self.metadata.is_candidate() {
+            debug!(self.logger, "Received heartbeat from server in current term while candidate, step down to follower";
+                "rpc" => "append",
+                "got" => append_request.term,
+                "have" => term,
+            );
+            self.metadata.transition_follower(None);
+        }
 
         let term = self.metadata.get_current_term();
         let success = false;
         let mut response = AppendResponse { success, term };
 
-        if append_request.term > term {
-            debug!(self.logger, "Internal term is out of date with leader term."; "rpc" => "append", "got" => append_request.term, "have" => term);
-            self.metadata.transition_follower(Some(append_request.term));
-            return Ok(response);
-        }
-
-        if append_request.term < term {
-            debug!(self.logger, "Internal term is newer than peer."; "rpc" => "append", "got" => append_request.term, "have" => term);
-            return Ok(response);
-        }
-
-        if !self.metadata.is_follower() {
-            debug!(self.logger, "Internal state is out of date with leader term."; "rpc" => "append", "got" => append_request.term, "have" => term);
-            self.metadata.transition_follower(None);
-            return Ok(response);
-        }
-
-        self.heartbeat_tx.send(())?;
-        if append_request.prev_log_idx == -1
-            || (append_request.prev_log_idx < self.log.len() as i64
-                && self.log.idx_and_term_match(
-                    append_request.prev_log_idx,
-                    append_request.prev_log_term,
-                )?)
+        if append_request.term == term && self.metadata.is_follower() && (log_ok)(&append_request)?
         {
+            // Accept the request.
+            self.heartbeat_tx.send(())?;
             response.success = true;
 
             self.log
@@ -194,36 +197,48 @@ where
                 self.commit_tx.send(())?;
             }
         }
-
         Ok(response)
     }
 
     pub async fn vote(&self, vote_request: VoteRequest) -> Result<VoteResponse> {
         debug!(self.logger, "Executing vote RPC.");
 
+        let log_ok = |vote_request: &VoteRequest| -> Result<bool> {
+            let (last_log_idx, last_log_term) = self.log.last_log_idx_and_term()?;
+
+            let result = vote_request.last_log_term > last_log_term
+                || (vote_request.last_log_term == last_log_term
+                    && vote_request.last_log_idx >= last_log_idx);
+            Ok(result)
+        };
+
+        let grant = |vote_request: &VoteRequest| -> Result<bool> {
+            let voted_for = self.metadata.get_voted_for();
+            Ok(vote_request.term == self.metadata.get_current_term()
+                && (log_ok)(vote_request)?
+                && (voted_for.is_none()
+                    || voted_for.as_ref().unwrap() == &vote_request.candidate_id))
+        };
+
+        let term = self.metadata.get_current_term();
+        if vote_request.term > term {
+            debug!(self.logger, "Internal term is out of date with leader term.";
+                "rpc" => "append",
+                "got" => vote_request.term,
+                "have" => term,
+            );
+            self.metadata.transition_follower(Some(vote_request.term));
+        }
+
         let term = self.metadata.get_current_term();
         let vote_granted = false;
         let mut response = VoteResponse { vote_granted, term };
 
-        let (last_log_idx, last_log_term) = self.log.last_log_idx_and_term()?;
-
-        if vote_request.term > term {
-            debug!(self.logger, "Internal term is out of date with leader term."; "rpc" => "vote", "got" => vote_request.term, "have" => term);
-            self.metadata.transition_follower(Some(vote_request.term));
-            return Ok(response);
-        }
-
-        let voted_for = self.metadata.get_voted_for();
-        if self.metadata.matches_term(vote_request.term)
-            && (voted_for.is_none() || voted_for.as_ref().unwrap() == &vote_request.candidate_id)
-            && (vote_request.last_log_term > last_log_term
-                || (vote_request.last_log_term == last_log_term
-                    && vote_request.last_log_idx >= last_log_idx))
-        {
+        if vote_request.term <= term && (grant)(&vote_request)? {
             response.vote_granted = true;
-            self.metadata.set_voted_for(Some(vote_request.candidate_id))
+            self.metadata.set_voted_for(Some(vote_request.candidate_id));
+            self.heartbeat_tx.send(())?;
         }
-
         Ok(response)
     }
 }

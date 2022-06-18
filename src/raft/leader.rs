@@ -83,7 +83,7 @@ where
             let entries = self
                 .log
                 .range(peer.next_idx, i64::MAX)
-                .unwrap_or(Vec::default())
+                .unwrap_or_default()
                 .drain(..)
                 .map(|payload| Entry {
                     payload: Some(payload),
@@ -136,46 +136,35 @@ where
                 continue;
             }
 
-            let mut commit = false;
             let mut locked_peers = self.metadata.peers.lock();
             let mut peer = match locked_peers.get_mut(&peer_id) {
                 Some(peer) => peer,
                 None => continue,
             };
-            if resp.success {
-                peer.next_idx += entries as i64;
-                peer.match_idx = peer.next_idx - 1;
+            if !resp.success {
+                peer.next_idx -= 1;
+                continue;
+            }
 
-                let saved_commit = self.metadata.get_commit_idx();
-                let start = saved_commit + 1;
-                for idx in start..self.log.len() as i64 {
-                    let entry = match self.log.get(idx) {
-                        Ok(entry) => entry,
-                        Err(e) => {
-                            error!(self.logger, "Failed to pull entry."; "error" => e.to_string());
-                            continue;
-                        }
-                    };
-                    if entry.term() != saved_term {
+            peer.next_idx += entries as i64;
+            peer.match_idx = peer.next_idx - 1;
+
+            let saved_commit = self.metadata.get_commit_idx();
+            let start = saved_commit + 1;
+            for idx in start..self.log.len() as i64 {
+                match self.log.get(idx) {
+                    Ok(entry) if entry.term() != saved_term => continue,
+                    Err(e) => {
+                        error!(self.logger, "Failed to pull entry."; "error" => e.to_string());
                         continue;
                     }
-                    let mut matches = 1;
-                    for (_, peer) in locked_peers.iter() {
-                        if peer.match_idx >= idx {
-                            matches += 1;
-                        }
-                    }
-                    if matches * 2 > locked_peers.len() {
-                        self.metadata.set_commit_idx(idx);
-                    }
+                    _ => {}
+                };
+                if locked_peers.idx_matches(idx) {
+                    self.metadata.set_commit_idx(idx);
                 }
-                if saved_commit != self.metadata.get_commit_idx() {
-                    commit = true;
-                }
-            } else {
-                peer.next_idx -= 1;
             }
-            if commit {
+            if saved_commit != self.metadata.get_commit_idx() {
                 if let Err(e) = self.commit_tx.send(()) {
                     error!(self.logger, "Failed to send commit notification."; "error" => e.to_string());
                 }
