@@ -97,11 +97,11 @@ pub async fn run() -> ExitCode {
             interval.tick().await;
 
             if cm_submit1.is_leader() {
-                cm_submit1.submit(payload.clone()).await.unwrap();
+                cm_submit1.submit_command(payload.clone()).await.unwrap();
             } else if cm_submit2.is_leader() {
-                cm_submit2.submit(payload.clone()).await.unwrap();
+                cm_submit2.submit_command(payload.clone()).await.unwrap();
             } else if cm_submit3.is_leader() {
-                cm_submit3.submit(payload.clone()).await.unwrap();
+                cm_submit3.submit_command(payload.clone()).await.unwrap();
             }
 
             interval.tick().await;
@@ -152,9 +152,9 @@ pub async fn run() -> ExitCode {
     });
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let peer1 = Peer::new(RaftServiceClient::connect(addr1).await.unwrap());
-    let peer2 = Peer::new(RaftServiceClient::connect(addr2).await.unwrap());
-    let peer3 = Peer::new(RaftServiceClient::connect(addr3).await.unwrap());
+    let peer1 = Peer::with_client(RaftServiceClient::connect(addr1).await.unwrap());
+    let peer2 = Peer::with_client(RaftServiceClient::connect(addr2).await.unwrap());
+    let peer3 = Peer::with_client(RaftServiceClient::connect(addr3).await.unwrap());
 
     cm1.append_peer(addr2.to_string(), peer2.clone());
     cm1.append_peer(addr3.to_string(), peer3.clone());

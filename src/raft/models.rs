@@ -4,7 +4,7 @@
 use serde_derive::{Deserialize, Serialize};
 use sled::IVec;
 
-use super::{Error, Result};
+use super::{Error, Peer, Result};
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum ElectionResult {
@@ -41,6 +41,15 @@ impl Entry {
         match self {
             Entry::Command(cmd) => cmd.term,
             Entry::ClusterConfig(cfg) => cfg.term,
+        }
+    }
+    pub fn is_cluster_config(&self) -> bool {
+        matches!(self, Entry::ClusterConfig(..))
+    }
+    pub fn unwrap_cluster_config(&self) -> ClusterConfig {
+        match self {
+            Entry::ClusterConfig(cfg) => cfg.clone(),
+            _ => panic!("called unwrap_cluster_config on Command type"),
         }
     }
     pub fn to_ivec(&self) -> Result<IVec> {
@@ -87,4 +96,27 @@ pub struct RequestVoteRequest {
 pub struct RequestVoteResponse {
     pub term: u128,
     pub vote_granted: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct AddServerRequest<P> {
+    pub id: String,
+    pub peer: Peer<P>,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct AddServerResponse {
+    pub status: String,
+    pub leader_hint: String,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct RemoveServerRequest {
+    pub id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct RemoveServerResponse {
+    pub status: String,
+    pub leader_hint: String,
 }

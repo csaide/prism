@@ -3,7 +3,7 @@
 
 use sled::IVec;
 
-use super::{Entry, Error, Result};
+use super::{ClusterConfig, Entry, Error, Result};
 
 #[derive(Debug)]
 pub struct Log {
@@ -43,7 +43,7 @@ impl Log {
     pub fn append(&self, entry: Entry) -> Result<()> {
         let idx = match self.store.last()? {
             Some((idx, _)) => idx.as_ref().try_into().map(u128::from_be_bytes)? + 1,
-            None => 0,
+            None => 1,
         };
         let idx = IVec::from(&idx.to_be_bytes());
         self.store
@@ -109,30 +109,33 @@ impl Log {
         Ok(payloads)
     }
 
-    pub fn append_entries(&self, prev_log_idx: u128, mut entries: Vec<Entry>) -> Result<()> {
+    pub fn append_entries(
+        &self,
+        prev_log_idx: u128,
+        mut entries: Vec<Entry>,
+    ) -> Result<Option<ClusterConfig>> {
         let mut log_insert_index = prev_log_idx + 1;
-        let mut entries_insert_index: u128 = 0;
+        let mut entries_insert_index: usize = 0;
         loop {
-            if log_insert_index >= self.len() as u128
-                || entries_insert_index >= entries.len() as u128
-            {
+            if log_insert_index >= self.len() as u128 || entries_insert_index >= entries.len() {
                 break;
             }
-            if !self.idx_and_term_match(
-                log_insert_index,
-                entries[entries_insert_index as usize].term(),
-            )? {
+            if !self.idx_and_term_match(log_insert_index, entries[entries_insert_index].term())? {
                 break;
             }
             log_insert_index += 1;
             entries_insert_index += 1;
         }
 
-        for entry in entries.drain(entries_insert_index as usize..) {
+        let mut res = None;
+        for entry in entries.drain(entries_insert_index..) {
+            if entry.is_cluster_config() {
+                res = Some(entry.unwrap_cluster_config());
+            }
             self.insert(log_insert_index, entry)?;
             log_insert_index += 1;
         }
-        Ok(())
+        Ok(res)
     }
 }
 
@@ -175,7 +178,7 @@ mod tests {
             .last_log_idx_and_term()
             .expect("Failed to retrieve last log idx/term.");
 
-        assert_eq!(0, last_log_idx);
+        assert_eq!(1, last_log_idx);
         assert_eq!(2, last_log_term);
         assert!(log
             .idx_and_term_match(last_log_idx, last_log_term)

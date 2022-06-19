@@ -102,7 +102,7 @@ where
     P: Client + Send + Clone + 'static,
 {
     pub fn new(id: String, peers: HashMap<String, Peer<P>>, db: &sled::Db) -> Result<Metadata<P>> {
-        let peers = Peers::bootstrap(peers);
+        let peers = Peers::bootstrap(id.clone(), peers, None);
         let persistent = PersistentState::new(db)?;
         Ok(Metadata {
             id,

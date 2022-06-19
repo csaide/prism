@@ -3,11 +3,14 @@
 
 use std::net::SocketAddr;
 
-use tonic::transport::Server;
+use tonic::transport::{Channel, Server};
 
-use crate::{raft::ConcensusRepo, rpc::cluster};
+use crate::raft::ConcensusRepo;
 
-use super::{interceptor, raft};
+use super::{
+    interceptor,
+    raft::{self, RaftServiceClient},
+};
 
 pub async fn serve<CM>(
     addr: SocketAddr,
@@ -15,7 +18,7 @@ pub async fn serve<CM>(
     logger: slog::Logger,
 ) -> Result<(), tonic::transport::Error>
 where
-    CM: ConcensusRepo,
+    CM: ConcensusRepo<RaftServiceClient<Channel>>,
 {
     let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
@@ -24,13 +27,9 @@ where
     health_reporter
         .set_service_status("raft", tonic_health::ServingStatus::Serving)
         .await;
-    health_reporter
-        .set_service_status("cluster", tonic_health::ServingStatus::Serving)
-        .await;
 
     let reflection = tonic_reflection::server::Builder::configure()
         .register_encoded_file_descriptor_set(raft::FILE_DESCRIPTOR_SET)
-        .register_encoded_file_descriptor_set(cluster::FILE_DESCRIPTOR_SET)
         .register_encoded_file_descriptor_set(
             tonic_health::proto::GRPC_HEALTH_V1_FILE_DESCRIPTOR_SET,
         )

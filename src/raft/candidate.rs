@@ -118,7 +118,10 @@ mod tests {
 
     use crate::{
         log,
-        raft::{test_harness::MockPeer, AppendEntriesResponse, Error, Peer},
+        raft::{
+            test_harness::MockPeer, AddServerResponse, AppendEntriesResponse, Error, Peer,
+            RemoveServerResponse,
+        },
     };
 
     use super::*;
@@ -144,9 +147,18 @@ mod tests {
                     vote_granted: false,
                 })
             })),
+            add_resp: Arc::new(Box::new(|| -> Result<AddServerResponse> {
+                unimplemented!()
+            })),
+            remove_resp: Arc::new(Box::new(|| -> Result<RemoveServerResponse> {
+                unimplemented!()
+            })),
         };
         let mut peers = HashMap::default();
-        peers.insert("grpc://localhost:12345".to_string(), Peer::new(peer1));
+        peers.insert(
+            "grpc://localhost:12345".to_string(),
+            Peer::with_client(peer1),
+        );
         let metadata = Arc::new(
             Metadata::new(String::from("testing"), peers, &db)
                 .expect("Failed to create metadata instance."),
@@ -178,6 +190,12 @@ mod tests {
                     vote_granted: false,
                 })
             })),
+            add_resp: Arc::new(Box::new(|| -> Result<AddServerResponse> {
+                unimplemented!()
+            })),
+            remove_resp: Arc::new(Box::new(|| -> Result<RemoveServerResponse> {
+                unimplemented!()
+            })),
         };
         let peer2 = MockPeer {
             append_resp: Arc::new(Box::new(|| -> Result<AppendEntriesResponse> {
@@ -188,6 +206,12 @@ mod tests {
                     term: 1,
                     vote_granted: true,
                 })
+            })),
+            add_resp: Arc::new(Box::new(|| -> Result<AddServerResponse> {
+                unimplemented!()
+            })),
+            remove_resp: Arc::new(Box::new(|| -> Result<RemoveServerResponse> {
+                unimplemented!()
             })),
         };
         let peer3 = MockPeer {
@@ -200,12 +224,27 @@ mod tests {
                     vote_granted: true,
                 })
             })),
+            add_resp: Arc::new(Box::new(|| -> Result<AddServerResponse> {
+                unimplemented!()
+            })),
+            remove_resp: Arc::new(Box::new(|| -> Result<RemoveServerResponse> {
+                unimplemented!()
+            })),
         };
 
         let mut peers = HashMap::default();
-        peers.insert("grpc://localhost:12345".to_string(), Peer::new(peer1));
-        peers.insert("grpc://localhost:12346".to_string(), Peer::new(peer2));
-        peers.insert("grpc://localhost:12347".to_string(), Peer::new(peer3));
+        peers.insert(
+            "grpc://localhost:12345".to_string(),
+            Peer::with_client(peer1),
+        );
+        peers.insert(
+            "grpc://localhost:12346".to_string(),
+            Peer::with_client(peer2),
+        );
+        peers.insert(
+            "grpc://localhost:12347".to_string(),
+            Peer::with_client(peer3),
+        );
 
         let metadata = Arc::new(
             Metadata::new(String::from("testing"), peers, &db)
@@ -239,9 +278,18 @@ mod tests {
                     vote_granted: false,
                 })
             })),
+            add_resp: Arc::new(Box::new(|| -> Result<AddServerResponse> {
+                unimplemented!()
+            })),
+            remove_resp: Arc::new(Box::new(|| -> Result<RemoveServerResponse> {
+                unimplemented!()
+            })),
         };
         let mut peers = HashMap::default();
-        peers.insert("grpc://localhost:12345".to_string(), Peer::new(peer1));
+        peers.insert(
+            "grpc://localhost:12345".to_string(),
+            Peer::with_client(peer1),
+        );
 
         let metadata = Arc::new(
             Metadata::new(String::from("testing"), peers, &db)
@@ -274,9 +322,18 @@ mod tests {
             vote_resp: Arc::new(Box::new(|| -> Result<RequestVoteResponse> {
                 Err(Error::Missing)
             })),
+            add_resp: Arc::new(Box::new(|| -> Result<AddServerResponse> {
+                unimplemented!()
+            })),
+            remove_resp: Arc::new(Box::new(|| -> Result<RemoveServerResponse> {
+                unimplemented!()
+            })),
         };
         let mut peers = HashMap::default();
-        peers.insert("grpc://localhost:12345".to_string(), Peer::new(peer1));
+        peers.insert(
+            "grpc://localhost:12345".to_string(),
+            Peer::with_client(peer1),
+        );
 
         let metadata = Arc::new(
             Metadata::new(String::from("testing"), peers, &db)

@@ -5,18 +5,24 @@ use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 
 use super::{
-    AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse, Result,
+    AddServerRequest, AddServerResponse, AppendEntriesRequest, AppendEntriesResponse,
+    ClusterConfig, RemoveServerRequest, RemoveServerResponse, RequestVoteRequest,
+    RequestVoteResponse, Result,
 };
 
 #[tonic::async_trait]
-pub trait Client: Send + Sync + 'static {
+pub trait Client: Send + Sync + 'static + Sized {
+    async fn connect(addr: String) -> Result<Self>;
     async fn vote(&mut self, req: RequestVoteRequest) -> Result<RequestVoteResponse>;
     async fn append(&mut self, req: AppendEntriesRequest) -> Result<AppendEntriesResponse>;
+    async fn add(&mut self, req: AddServerRequest<Self>) -> Result<AddServerResponse>;
+    async fn remove(&mut self, req: RemoveServerRequest) -> Result<RemoveServerResponse>;
 }
 
 #[derive(Debug, Clone)]
 pub struct Peer<C> {
-    client: C,
+    client: Option<C>,
+    pub id: String,
     pub next_idx: u128,
     pub match_idx: u128,
 }
@@ -25,10 +31,20 @@ impl<C> Peer<C>
 where
     C: Client + Send + Clone + 'static,
 {
-    pub fn new(client: C) -> Peer<C> {
+    pub fn new(id: String) -> Peer<C> {
         Peer {
-            client,
-            next_idx: 0,
+            id,
+            client: None,
+            next_idx: 1,
+            match_idx: 0,
+        }
+    }
+
+    pub fn with_client(client: C) -> Peer<C> {
+        Peer {
+            id: String::new(),
+            client: Some(client),
+            next_idx: 1,
             match_idx: 0,
         }
     }
@@ -39,47 +55,107 @@ where
     }
 
     pub async fn vote(&mut self, req: RequestVoteRequest) -> Result<RequestVoteResponse> {
-        self.client.vote(req).await
+        if self.client.is_none() {
+            let client = C::connect(self.id.clone()).await?;
+            self.client = Some(client);
+        }
+        self.client.as_mut().unwrap().vote(req).await
     }
 
     pub async fn append(&mut self, req: AppendEntriesRequest) -> Result<AppendEntriesResponse> {
-        self.client.append(req).await
+        if self.client.is_none() {
+            let client = C::connect(self.id.clone()).await?;
+            self.client = Some(client);
+        }
+        self.client.as_mut().unwrap().append(req).await
+    }
+
+    pub async fn add(&mut self, req: AddServerRequest<C>) -> Result<AddServerResponse> {
+        if self.client.is_none() {
+            let client = C::connect(self.id.clone()).await?;
+            self.client = Some(client);
+        }
+        self.client.as_mut().unwrap().add(req).await
+    }
+
+    pub async fn remove(&mut self, req: RemoveServerRequest) -> Result<RemoveServerResponse> {
+        if self.client.is_none() {
+            let client = C::connect(self.id.clone()).await?;
+            self.client = Some(client);
+        }
+        self.client.as_mut().unwrap().remove(req).await
     }
 }
 
 #[derive(Debug)]
 pub struct Peers<C> {
-    peers: Mutex<HashMap<String, Peer<C>>>,
+    id: String,
+    voters: Mutex<HashMap<String, Peer<C>>>,
+    replicas: Mutex<HashMap<String, Peer<C>>>,
 }
 
 impl<C> Peers<C>
 where
     C: Client + Send + Clone + 'static,
 {
-    pub fn new() -> Peers<C> {
-        let peers = Mutex::new(HashMap::default());
-        Peers { peers }
+    pub fn new(id: String) -> Peers<C> {
+        let voters = Mutex::new(HashMap::default());
+        let replicas = Mutex::new(HashMap::default());
+        Peers {
+            id,
+            voters,
+            replicas,
+        }
     }
 
-    pub fn bootstrap(initial_peers: HashMap<String, Peer<C>>) -> Peers<C> {
-        let peers = Mutex::new(initial_peers);
-        Peers { peers }
+    pub fn bootstrap(
+        id: String,
+        voters: HashMap<String, Peer<C>>,
+        replicas: Option<HashMap<String, Peer<C>>>,
+    ) -> Peers<C> {
+        let voters = Mutex::new(voters);
+        let replicas = Mutex::new(replicas.unwrap_or_default());
+        Peers {
+            id,
+            voters,
+            replicas,
+        }
     }
 
     pub fn len(&self) -> usize {
-        self.peers.lock().unwrap().len()
+        self.voters.lock().unwrap().len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.peers.lock().unwrap().is_empty()
+        self.voters.lock().unwrap().is_empty()
     }
 
     pub fn append(&self, id: String, peer: Peer<C>) {
-        self.peers.lock().unwrap().insert(id, peer);
+        self.voters.lock().unwrap().insert(id, peer);
+    }
+
+    pub fn remove(&self, id: &String) {
+        self.voters.lock().unwrap().remove(id);
+    }
+    pub async fn update(&self, mut cfg: ClusterConfig) -> Result<()> {
+        let mut locked = self.lock();
+        let mut voters = HashMap::with_capacity(cfg.voters.len());
+        for voter in cfg.voters.drain(..) {
+            let cli = Peer::new(voter.clone());
+            voters.insert(voter, cli);
+        }
+        let mut replicas = HashMap::with_capacity(cfg.replicas.len());
+        for replica in cfg.replicas.drain(..) {
+            let cli = Peer::new(replica.clone());
+            replicas.insert(replica, cli);
+        }
+        *locked.voters = voters;
+        *locked.replicas = replicas;
+        Ok(())
     }
 
     pub fn reset(&self, last_log_idx: u128) {
-        self.peers
+        self.voters
             .lock()
             .unwrap()
             .iter_mut()
@@ -88,56 +164,73 @@ where
 
     pub fn lock(&self) -> LockedPeers<'_, C> {
         LockedPeers {
-            items: self.peers.lock().unwrap(),
+            id: self.id.clone(),
+            voters: self.voters.lock().unwrap(),
+            replicas: self.replicas.lock().unwrap(),
         }
     }
-}
 
-impl<C> Default for Peers<C>
-where
-    C: Client + Send + Clone + 'static,
-{
-    fn default() -> Self {
-        Self::new()
+    pub fn to_cluster_config(&self) -> ClusterConfig {
+        ClusterConfig {
+            term: 0,
+            voters: self
+                .voters
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|(id, _)| id)
+                .cloned()
+                .collect(),
+            replicas: self
+                .replicas
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|(id, _)| id)
+                .cloned()
+                .collect(),
+        }
     }
 }
 
 pub struct LockedPeers<'a, C> {
-    items: MutexGuard<'a, HashMap<String, Peer<C>>>,
+    id: String,
+    voters: MutexGuard<'a, HashMap<String, Peer<C>>>,
+    replicas: MutexGuard<'a, HashMap<String, Peer<C>>>,
 }
 
 impl<'a, C> LockedPeers<'a, C> {
     pub fn len(&self) -> usize {
-        self.items.len()
+        self.voters.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.items.is_empty()
+        self.voters.is_empty()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&String, &Peer<C>)> {
-        self.items.iter()
+        self.voters.iter().filter(|(id, _)| **id != self.id)
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&String, &mut Peer<C>)> {
-        self.items.iter_mut()
+        self.voters.iter_mut().filter(|(id, _)| **id != self.id)
     }
 
     pub fn get(&self, id: &String) -> Option<&Peer<C>> {
-        self.items.get(id)
+        self.voters.get(id)
     }
 
     pub fn get_mut(&mut self, id: &String) -> Option<&mut Peer<C>> {
-        self.items.get_mut(id)
+        self.voters.get_mut(id)
     }
 
     pub fn idx_matches(&self, idx: u128) -> bool {
         let mut matches = 1;
-        for (_, peer) in self.items.iter() {
+        for (_, peer) in self.voters.iter().filter(|(id, _)| **id != self.id) {
             if peer.match_idx >= idx {
                 matches += 1;
             }
         }
-        matches * 2 > self.len()
+        matches > (self.voters.len() - 1) / 2
     }
 }

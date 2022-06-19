@@ -9,9 +9,10 @@ use tokio::sync::watch::{self, Receiver, Sender};
 use crate::raft::{Commiter, Leader};
 
 use super::{
-    AppendEntriesRequest, AppendEntriesResponse, Candidate, Client, Command, ElectionResult, Entry,
-    Error, Follower, Log, Metadata, Peer, RequestVoteRequest, RequestVoteResponse, Result,
-    StateMachine,
+    AddServerRequest, AddServerResponse, AppendEntriesRequest, AppendEntriesResponse, Candidate,
+    Client, ClusterConfig, Command, ElectionResult, Entry, Error, Follower, Log, Metadata, Peer,
+    RemoveServerRequest, RemoveServerResponse, RequestVoteRequest, RequestVoteResponse, Result,
+    StateMachine, Syncer,
 };
 
 #[derive(Debug, Clone)]
@@ -124,6 +125,10 @@ where
             info!(self.logger, "Starting worker!");
             self.follower_loop().await;
 
+            if self.metadata.peers.len() < 2 {
+                continue;
+            }
+
             let saved_term = self.metadata.transition_candidate();
 
             match self.candidate_loop(saved_term).await {
@@ -137,7 +142,7 @@ where
         }
     }
 
-    pub async fn submit(&self, command: Vec<u8>) -> Result<()> {
+    pub async fn submit_command(&self, command: Vec<u8>) -> Result<()> {
         if !self.metadata.is_leader() {
             return Err(Error::InvalidState);
         }
@@ -148,6 +153,14 @@ where
             data: command,
         }))?;
 
+        self.submit_tx.send(()).map_err(Error::from)
+    }
+
+    async fn submit_cluster_config(&self, cfg: ClusterConfig) -> Result<()> {
+        if !self.metadata.is_leader() {
+            return Err(Error::InvalidState);
+        }
+        self.log.append(Entry::ClusterConfig(cfg))?;
         self.submit_tx.send(()).map_err(Error::from)
     }
 
@@ -172,6 +185,12 @@ where
                 "have" => term,
             );
             self.metadata.transition_follower(Some(append_request.term));
+        } else if append_request.term < term {
+            debug!(self.logger, "Internal term is greater than request term... ignoring.";
+                "rpc" => "append",
+                "got" => append_request.term,
+                "have" => term,
+            );
         } else if append_request.term == term && self.metadata.is_candidate() {
             debug!(self.logger, "Received heartbeat from server in current term while candidate, step down to follower";
                 "rpc" => "append",
@@ -187,12 +206,18 @@ where
 
         if append_request.term == term && self.metadata.is_follower() && (log_ok)(&append_request)?
         {
+            debug!(self.logger, "Accepting append entries request.");
             // Accept the request.
             self.heartbeat_tx.send(())?;
             response.success = true;
 
-            self.log
-                .append_entries(append_request.prev_log_idx, append_request.entries)?;
+            if let Some(cfg) = self
+                .log
+                .append_entries(append_request.prev_log_idx, append_request.entries)?
+            {
+                info!(self.logger, "Cluster configuration updated!"; "voters" => format!("{:?}", &cfg.voters));
+                self.metadata.peers.update(cfg).await?;
+            }
             if append_request.leader_commit_idx > self.metadata.get_commit_idx() {
                 self.metadata
                     .set_commit_idx(append_request.leader_commit_idx.min(self.log.len() as u128));
@@ -243,19 +268,72 @@ where
         }
         Ok(response)
     }
+
+    pub async fn add_member(
+        &self,
+        server_request: AddServerRequest<P>,
+    ) -> Result<AddServerResponse> {
+        if !self.metadata.is_leader() {
+            return Err(Error::InvalidState);
+        }
+        Syncer::new(
+            &self.logger,
+            self.metadata.clone(),
+            self.log.clone(),
+            server_request.peer.clone(),
+        )
+        .exec()
+        .await;
+
+        self.metadata
+            .peers
+            .append(server_request.id, server_request.peer);
+
+        let mut cfg = self.metadata.peers.to_cluster_config();
+        cfg.term = self.metadata.get_current_term();
+        self.submit_cluster_config(cfg).await?;
+
+        Ok(AddServerResponse {
+            leader_hint: self.metadata.id.clone(),
+            status: "OK".to_string(),
+        })
+    }
+    pub async fn remove_member(
+        &self,
+        server_request: RemoveServerRequest,
+    ) -> Result<RemoveServerResponse> {
+        if !self.metadata.is_leader() {
+            return Err(Error::InvalidState);
+        }
+        self.metadata.peers.remove(&server_request.id);
+
+        let mut cfg = self.metadata.peers.to_cluster_config();
+        cfg.term = self.metadata.get_current_term();
+        self.submit_cluster_config(cfg).await?;
+
+        Ok(RemoveServerResponse {
+            leader_hint: self.metadata.id.clone(),
+            status: "OK".to_string(),
+        })
+    }
 }
 
 #[tonic::async_trait]
-pub trait ConcensusRepo: Send + Sync + 'static {
+pub trait ConcensusRepo<P>: Send + Sync + 'static {
     async fn append_entries(
         &self,
         mut append_request: AppendEntriesRequest,
     ) -> Result<AppendEntriesResponse>;
     async fn vote_request(&self, vote_request: RequestVoteRequest) -> Result<RequestVoteResponse>;
+    async fn add_server(&self, add_request: AddServerRequest<P>) -> Result<AddServerResponse>;
+    async fn remove_server(
+        &self,
+        remove_request: RemoveServerRequest,
+    ) -> Result<RemoveServerResponse>;
 }
 
 #[tonic::async_trait]
-impl<P, S> ConcensusRepo for ConsensusMod<P, S>
+impl<P, S> ConcensusRepo<P> for ConsensusMod<P, S>
 where
     P: Client + Send + Clone + 'static,
     S: StateMachine + Send + Sync + 'static,
@@ -268,5 +346,14 @@ where
     }
     async fn vote_request(&self, vote_request: RequestVoteRequest) -> Result<RequestVoteResponse> {
         self.vote(vote_request).await
+    }
+    async fn add_server(&self, add_request: AddServerRequest<P>) -> Result<AddServerResponse> {
+        self.add_member(add_request).await
+    }
+    async fn remove_server(
+        &self,
+        remove_request: RemoveServerRequest,
+    ) -> Result<RemoveServerResponse> {
+        self.remove_member(remove_request).await
     }
 }

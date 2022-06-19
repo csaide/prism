@@ -56,6 +56,12 @@ pub enum Error {
         #[from]
         CompareAndSwapError,
     ),
+    #[error("transport error: {0}")]
+    Transport(
+        #[source]
+        #[from]
+        tonic::transport::Error,
+    ),
 }
 
 impl From<Error> for Status {

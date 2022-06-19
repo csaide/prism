@@ -5,14 +5,20 @@ mod proto {
     use tonic::transport::Channel;
 
     use crate::raft::{
-        self, AppendEntriesRequest, AppendEntriesResponse, Client, Error, RequestVoteRequest,
+        self, AddServerRequest, AddServerResponse, AppendEntriesRequest, AppendEntriesResponse,
+        Client, Error, Peer, RemoveServerRequest, RemoveServerResponse, RequestVoteRequest,
         RequestVoteResponse, Result,
     };
+
+    use super::RaftServiceClient;
 
     tonic::include_proto!("raft");
 
     #[tonic::async_trait]
     impl Client for raft_service_client::RaftServiceClient<Channel> {
+        async fn connect(addr: String) -> Result<RaftServiceClient<Channel>> {
+            RaftServiceClient::connect(addr).await.map_err(Error::from)
+        }
         async fn vote(&mut self, req: RequestVoteRequest) -> Result<RequestVoteResponse> {
             let resp = self
                 .request_vote(VoteRequest::from_raft(req)?)
@@ -27,6 +33,20 @@ mod proto {
                 .await
                 .map(|resp| resp.into_inner())
                 .map_err(Error::from)?;
+            resp.into_raft()
+        }
+        async fn add(&mut self, req: AddServerRequest<Self>) -> Result<AddServerResponse> {
+            let resp = self
+                .add_server(AddRequest::from_raft(req)?)
+                .await
+                .map(|resp| resp.into_inner())?;
+            resp.into_raft()
+        }
+        async fn remove(&mut self, req: RemoveServerRequest) -> Result<RemoveServerResponse> {
+            let resp = self
+                .remove_server(RemoveRequest::from_raft(req)?)
+                .await
+                .map(|resp| resp.into_inner())?;
             resp.into_raft()
         }
     }
@@ -205,6 +225,63 @@ mod proto {
             })
         }
     }
+
+    impl AddRequest {
+        pub async fn into_raft(self) -> Result<AddServerRequest<RaftServiceClient<Channel>>> {
+            let peer = RaftServiceClient::connect(self.member.clone()).await?;
+            let peer = Peer::with_client(peer);
+            Ok(AddServerRequest {
+                id: self.member,
+                peer,
+            })
+        }
+
+        pub fn from_raft(
+            input: AddServerRequest<RaftServiceClient<Channel>>,
+        ) -> Result<AddRequest> {
+            Ok(AddRequest { member: input.id })
+        }
+    }
+
+    impl AddResponse {
+        pub fn into_raft(self) -> Result<AddServerResponse> {
+            Ok(AddServerResponse {
+                leader_hint: self.leader_hint,
+                status: self.status,
+            })
+        }
+        pub fn from_raft(input: AddServerResponse) -> Result<AddResponse> {
+            Ok(AddResponse {
+                leader_hint: input.leader_hint,
+                status: input.status,
+            })
+        }
+    }
+
+    impl RemoveRequest {
+        pub fn into_raft(self) -> Result<RemoveServerRequest> {
+            Ok(RemoveServerRequest { id: self.member })
+        }
+        pub fn from_raft(input: RemoveServerRequest) -> Result<RemoveRequest> {
+            Ok(RemoveRequest { member: input.id })
+        }
+    }
+
+    impl RemoveResponse {
+        pub fn into_raft(self) -> Result<RemoveServerResponse> {
+            Ok(RemoveServerResponse {
+                leader_hint: self.leader_hint,
+                status: self.status,
+            })
+        }
+
+        pub fn from_raft(input: RemoveServerResponse) -> Result<RemoveResponse> {
+            Ok(RemoveResponse {
+                leader_hint: input.leader_hint,
+                status: input.status,
+            })
+        }
+    }
 }
 mod handler;
 
@@ -216,5 +293,6 @@ pub use proto::{
     entry::Payload, raft_service_client::RaftServiceClient, raft_service_server::RaftServiceServer,
 };
 pub use proto::{
-    AppendRequest, AppendResponse, ClusterConfig, Command, Entry, VoteRequest, VoteResponse,
+    AddRequest, AddResponse, AppendRequest, AppendResponse, ClusterConfig, Command, Entry,
+    RemoveRequest, RemoveResponse, VoteRequest, VoteResponse,
 };

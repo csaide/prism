@@ -12,6 +12,7 @@ mod metadata;
 mod models;
 mod peer;
 mod state_machine;
+mod syncer;
 #[cfg(test)]
 #[cfg(not(tarpaulin_include))]
 mod test_harness;
@@ -27,3 +28,4 @@ pub use metadata::{Metadata, State};
 pub use models::*;
 pub use peer::{Client, Peer, Peers};
 pub use state_machine::StateMachine;
+pub use syncer::Syncer;
