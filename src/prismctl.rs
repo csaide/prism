@@ -156,14 +156,17 @@ pub async fn run() -> ExitCode {
     let peer2 = Peer::with_client(RaftServiceClient::connect(addr2).await.unwrap());
     let peer3 = Peer::with_client(RaftServiceClient::connect(addr3).await.unwrap());
 
+    cm1.append_peer(addr1.to_string(), peer1.clone());
     cm1.append_peer(addr2.to_string(), peer2.clone());
     cm1.append_peer(addr3.to_string(), peer3.clone());
 
     cm2.append_peer(addr1.to_string(), peer1.clone());
+    cm2.append_peer(addr2.to_string(), peer2.clone());
     cm2.append_peer(addr3.to_string(), peer3.clone());
 
     cm3.append_peer(addr1.to_string(), peer1.clone());
     cm3.append_peer(addr2.to_string(), peer2.clone());
+    cm3.append_peer(addr3.to_string(), peer3.clone());
 
     select! {
         _ = cm1.start() => {

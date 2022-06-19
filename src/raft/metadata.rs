@@ -89,6 +89,8 @@ pub struct Metadata<P> {
 
     // Volatile state.
     pub state: RwLock<State>,
+    pub have_leader: RwLock<bool>,
+    pub last_cluster_config_idx: RwLock<u128>,
     pub last_applied_idx: RwLock<u128>,
     pub commit_idx: RwLock<u128>,
     pub peers: Peers<P>,
@@ -106,7 +108,9 @@ where
         let persistent = PersistentState::new(db)?;
         Ok(Metadata {
             id,
+            have_leader: RwLock::new(false),
             state: RwLock::new(State::Follower),
+            last_cluster_config_idx: RwLock::new(0),
             commit_idx: RwLock::new(0),
             last_applied_idx: RwLock::new(0),
             persistent,
@@ -124,6 +128,22 @@ where
 
     pub fn is_follower(&self) -> bool {
         *self.state.read().unwrap() == State::Follower
+    }
+
+    pub fn is_dead(&self) -> bool {
+        *self.state.read().unwrap() == State::Dead
+    }
+
+    pub fn saw_leader(&self) {
+        *self.have_leader.write().unwrap() = true;
+    }
+
+    pub fn lost_leader(&self) {
+        *self.have_leader.write().unwrap() = false;
+    }
+
+    pub fn have_leader(&self) -> bool {
+        *self.have_leader.read().unwrap()
     }
 
     pub fn matches_term(&self, term: u128) -> bool {
@@ -174,6 +194,15 @@ where
         self.persistent.incr_current_term().unwrap_or(0)
     }
 
+    pub fn set_last_cluster_config_idx(&self, idx: u128) {
+        let mut val = self.last_cluster_config_idx.write().unwrap();
+        *val = idx
+    }
+
+    pub fn matches_last_cluster_config_idx(&self, idx: u128) -> bool {
+        idx >= *self.last_cluster_config_idx.read().unwrap()
+    }
+
     pub fn transition_follower(&self, term: Option<u128>) {
         self.set_state(State::Follower);
         if let Some(term) = term {
@@ -191,5 +220,9 @@ where
     pub fn transition_leader(&self, last_log_idx: u128) {
         self.set_state(State::Leader);
         self.peers.reset(last_log_idx);
+    }
+
+    pub fn transition_dead(&self) {
+        self.set_state(State::Dead);
     }
 }

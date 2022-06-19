@@ -1,20 +1,33 @@
 // (c) Copyright 2022 Christian Saide
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::sync::Arc;
+
 use rand::Rng;
 use tokio::sync::watch;
 use tokio::time::{timeout, Duration};
 
-pub struct Follower {
+use super::{Client, Metadata};
+
+pub struct Follower<P> {
     logger: slog::Logger,
+    metadata: Arc<Metadata<P>>,
     heartbeat_rx: watch::Receiver<()>,
     min_timeout_ms: u64,
     max_timeout_ms: u64,
 }
 
-impl Follower {
-    pub fn new(logger: &slog::Logger, heartbeat_rx: watch::Receiver<()>) -> Follower {
+impl<P> Follower<P>
+where
+    P: Client + Clone,
+{
+    pub fn new(
+        logger: &slog::Logger,
+        metadata: Arc<Metadata<P>>,
+        heartbeat_rx: watch::Receiver<()>,
+    ) -> Follower<P> {
         Follower {
+            metadata,
             logger: logger.new(o!("module" => "follower")),
             heartbeat_rx,
             min_timeout_ms: 150,
@@ -25,7 +38,7 @@ impl Follower {
         let dur = rand::thread_rng().gen_range(self.min_timeout_ms..self.max_timeout_ms + 1);
         let dur = Duration::from_millis(dur);
 
-        loop {
+        while !self.metadata.is_dead() {
             let timed_out = timeout(dur, self.heartbeat_rx.changed()).await.is_err();
 
             if timed_out {
@@ -33,8 +46,10 @@ impl Follower {
                     self.logger,
                     "Timed out waiting for heartbeat starting election."
                 );
+                self.metadata.lost_leader();
                 return;
             }
+            self.metadata.saw_leader();
             debug!(self.logger, "Got heartbeat re-setting heartbeat.");
         }
     }
@@ -43,7 +58,10 @@ impl Follower {
 #[cfg(test)]
 #[cfg(not(tarpaulin_include))]
 mod tests {
+    use std::collections::HashMap;
+
     use crate::log;
+    use crate::raft::test_harness::MockPeer;
 
     use super::*;
 
@@ -52,7 +70,15 @@ mod tests {
         let logger = log::noop();
 
         let (heartbeat_tx, heartbeat_rx) = watch::channel(());
-        let mut follower = Follower::new(&logger, heartbeat_rx);
+        let db = sled::Config::new()
+            .temporary(true)
+            .open()
+            .expect("Failed to open database.");
+        let metadata = Arc::new(
+            Metadata::<MockPeer>::new(String::from("id"), HashMap::default(), &db)
+                .expect("Failed to create shared metadata."),
+        );
+        let mut follower = Follower::new(&logger, metadata, heartbeat_rx);
         follower.max_timeout_ms = 2;
         follower.min_timeout_ms = 1;
         heartbeat_tx.send(()).expect("Failed to send wake up.");

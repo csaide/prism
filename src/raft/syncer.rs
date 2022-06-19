@@ -31,7 +31,7 @@ where
     }
 
     pub async fn exec(&mut self) {
-        loop {
+        while !self.metadata.is_dead() {
             let term = self.metadata.get_current_term();
             let (entries, resp) = self.send_request(term).await;
             let resp = match resp {

@@ -141,7 +141,7 @@ where
 
             let saved_commit = self.metadata.get_commit_idx();
             let start = saved_commit + 1;
-            for idx in start..self.log.len() as u128 {
+            for idx in start..(self.log.len() + 1) as u128 {
                 match self.log.get(idx) {
                     Ok(entry) if entry.term() != saved_term => continue,
                     Err(e) => {
@@ -157,6 +157,14 @@ where
             if saved_commit != self.metadata.get_commit_idx() {
                 if let Err(e) = self.commit_tx.send(()) {
                     error!(self.logger, "Failed to send commit notification."; "error" => e.to_string());
+                }
+                if self
+                    .metadata
+                    .matches_last_cluster_config_idx(self.metadata.get_commit_idx())
+                    && !locked_peers.contains(&self.metadata.id)
+                {
+                    self.metadata.transition_dead();
+                    return;
                 }
             }
         }

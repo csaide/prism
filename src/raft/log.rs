@@ -40,15 +40,16 @@ impl Log {
         }
     }
 
-    pub fn append(&self, entry: Entry) -> Result<()> {
+    pub fn append(&self, entry: Entry) -> Result<u128> {
         let idx = match self.store.last()? {
             Some((idx, _)) => idx.as_ref().try_into().map(u128::from_be_bytes)? + 1,
             None => 1,
         };
-        let idx = IVec::from(&idx.to_be_bytes());
+        let key = IVec::from(&idx.to_be_bytes());
         self.store
-            .compare_and_swap::<IVec, IVec, IVec>(idx, None, Some(entry.to_ivec()?))?
-            .map_err(Error::from)
+            .compare_and_swap::<IVec, IVec, IVec>(key, None, Some(entry.to_ivec()?))?
+            .map_err(Error::from)?;
+        Ok(idx)
     }
 
     pub fn insert(&self, idx: u128, entry: Entry) -> Result<()> {

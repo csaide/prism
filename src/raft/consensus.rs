@@ -78,9 +78,13 @@ where
 
     async fn follower_loop(&mut self) {
         debug!(self.logger, "Started follower loop!");
-        Follower::new(&self.logger, self.heartbeat_rx.clone())
-            .exec()
-            .await
+        Follower::new(
+            &self.logger,
+            self.metadata.clone(),
+            self.heartbeat_rx.clone(),
+        )
+        .exec()
+        .await
     }
 
     async fn candidate_loop(&self, saved_term: u128) -> ElectionResult {
@@ -121,7 +125,7 @@ where
 
     pub async fn start(&mut self) {
         self.commit_loop();
-        loop {
+        while !self.metadata.is_dead() {
             info!(self.logger, "Starting worker!");
             self.follower_loop().await;
 
@@ -143,6 +147,9 @@ where
     }
 
     pub async fn submit_command(&self, command: Vec<u8>) -> Result<()> {
+        if self.metadata.is_dead() {
+            return Err(Error::Dead);
+        }
         if !self.metadata.is_leader() {
             return Err(Error::InvalidState);
         }
@@ -157,10 +164,20 @@ where
     }
 
     async fn submit_cluster_config(&self, cfg: ClusterConfig) -> Result<()> {
+        if self.metadata.is_dead() {
+            return Err(Error::Dead);
+        }
         if !self.metadata.is_leader() {
             return Err(Error::InvalidState);
         }
-        self.log.append(Entry::ClusterConfig(cfg))?;
+        info!(self.logger, "Appending cluster config entry.");
+        let last_cluster_config_idx = self.log.append(Entry::ClusterConfig(cfg))?;
+
+        info!(self.logger, "Setting last cluster config index.");
+        self.metadata
+            .set_last_cluster_config_idx(last_cluster_config_idx);
+
+        info!(self.logger, "Waking leader loop for replication.");
         self.submit_tx.send(()).map_err(Error::from)
     }
 
@@ -168,6 +185,10 @@ where
         &self,
         append_request: AppendEntriesRequest,
     ) -> Result<AppendEntriesResponse> {
+        if self.metadata.is_dead() {
+            return Err(Error::Dead);
+        }
+
         let log_ok = |append_request: &AppendEntriesRequest| -> Result<bool> {
             Ok(append_request.prev_log_idx == 0
                 || (append_request.prev_log_idx <= self.log.len() as u128
@@ -216,7 +237,9 @@ where
                 .append_entries(append_request.prev_log_idx, append_request.entries)?
             {
                 info!(self.logger, "Cluster configuration updated!"; "voters" => format!("{:?}", &cfg.voters));
-                self.metadata.peers.update(cfg).await?;
+                if !self.metadata.peers.update(cfg).await? {
+                    self.metadata.transition_dead();
+                }
             }
             if append_request.leader_commit_idx > self.metadata.get_commit_idx() {
                 self.metadata
@@ -228,7 +251,11 @@ where
     }
 
     pub async fn vote(&self, vote_request: RequestVoteRequest) -> Result<RequestVoteResponse> {
-        debug!(self.logger, "Executing vote RPC.");
+        if self.metadata.is_dead() {
+            return Err(Error::Dead);
+        }
+
+        debug!(self.logger, "Executing vote RPC."; "term" => vote_request.term, "candidate" => &vote_request.candidate_id);
 
         let log_ok = |vote_request: &RequestVoteRequest| -> Result<bool> {
             let (last_log_idx, last_log_term) = self.log.last_log_idx_and_term()?;
@@ -242,13 +269,15 @@ where
         let grant = |vote_request: &RequestVoteRequest| -> Result<bool> {
             let voted_for = self.metadata.get_voted_for();
             Ok(vote_request.term == self.metadata.get_current_term()
+                && !self.metadata.have_leader()
+                && self.metadata.peers.contains(&vote_request.candidate_id)
                 && (log_ok)(vote_request)?
                 && (voted_for.is_none()
                     || voted_for.as_ref().unwrap() == &vote_request.candidate_id))
         };
 
         let term = self.metadata.get_current_term();
-        if vote_request.term > term {
+        if vote_request.term > term && self.metadata.peers.contains(&vote_request.candidate_id) {
             debug!(self.logger, "Internal term is out of date with leader term.";
                 "rpc" => "append",
                 "got" => vote_request.term,
@@ -273,9 +302,13 @@ where
         &self,
         server_request: AddServerRequest<P>,
     ) -> Result<AddServerResponse> {
+        if self.metadata.is_dead() {
+            return Err(Error::Dead);
+        }
         if !self.metadata.is_leader() {
             return Err(Error::InvalidState);
         }
+
         Syncer::new(
             &self.logger,
             self.metadata.clone(),
@@ -298,10 +331,14 @@ where
             status: "OK".to_string(),
         })
     }
+
     pub async fn remove_member(
         &self,
         server_request: RemoveServerRequest,
     ) -> Result<RemoveServerResponse> {
+        if self.metadata.is_dead() {
+            return Err(Error::Dead);
+        }
         if !self.metadata.is_leader() {
             return Err(Error::InvalidState);
         }

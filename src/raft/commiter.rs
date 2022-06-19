@@ -37,7 +37,7 @@ where
     }
 
     pub async fn exec(&mut self) {
-        while self.commit_rx.changed().await.is_ok() {
+        while !self.metadata.is_dead() && self.commit_rx.changed().await.is_ok() {
             let last_applied_idx = self.metadata.get_last_applied_idx();
             let commit_idx = self.metadata.get_commit_idx();
 

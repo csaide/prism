@@ -62,6 +62,8 @@ pub enum Error {
         #[from]
         tonic::transport::Error,
     ),
+    #[error("server has transitioned to dead")]
+    Dead,
 }
 
 impl From<Error> for Status {

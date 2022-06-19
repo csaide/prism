@@ -137,21 +137,34 @@ where
     pub fn remove(&self, id: &String) {
         self.voters.lock().unwrap().remove(id);
     }
-    pub async fn update(&self, mut cfg: ClusterConfig) -> Result<()> {
+
+    pub fn contains(&self, id: &String) -> bool {
+        self.voters.lock().unwrap().contains_key(id)
+    }
+    pub async fn update(&self, mut cfg: ClusterConfig) -> Result<bool> {
+        let mut found_self = false;
         let mut locked = self.lock();
         let mut voters = HashMap::with_capacity(cfg.voters.len());
         for voter in cfg.voters.drain(..) {
+            if voter == self.id {
+                found_self = true;
+            }
+
             let cli = Peer::new(voter.clone());
             voters.insert(voter, cli);
         }
         let mut replicas = HashMap::with_capacity(cfg.replicas.len());
         for replica in cfg.replicas.drain(..) {
+            if replica == self.id {
+                found_self = true;
+            }
+
             let cli = Peer::new(replica.clone());
             replicas.insert(replica, cli);
         }
         *locked.voters = voters;
         *locked.replicas = replicas;
-        Ok(())
+        Ok(found_self)
     }
 
     pub fn reset(&self, last_log_idx: u128) {
@@ -214,6 +227,10 @@ impl<'a, C> LockedPeers<'a, C> {
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&String, &mut Peer<C>)> {
         self.voters.iter_mut().filter(|(id, _)| **id != self.id)
+    }
+
+    pub fn contains(&self, id: &String) -> bool {
+        self.voters.contains_key(id)
     }
 
     pub fn get(&self, id: &String) -> Option<&Peer<C>> {
