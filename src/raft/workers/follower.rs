@@ -7,11 +7,11 @@ use rand::Rng;
 use tokio::sync::watch;
 use tokio::time::{timeout, Duration};
 
-use super::{Client, Metadata};
+use super::{Client, State};
 
 pub struct Follower<P> {
     logger: slog::Logger,
-    metadata: Arc<Metadata<P>>,
+    state: Arc<State<P>>,
     heartbeat_rx: watch::Receiver<()>,
     min_timeout_ms: u64,
     max_timeout_ms: u64,
@@ -23,11 +23,11 @@ where
 {
     pub fn new(
         logger: &slog::Logger,
-        metadata: Arc<Metadata<P>>,
+        state: Arc<State<P>>,
         heartbeat_rx: watch::Receiver<()>,
     ) -> Follower<P> {
         Follower {
-            metadata,
+            state,
             logger: logger.new(o!("module" => "follower")),
             heartbeat_rx,
             min_timeout_ms: 150,
@@ -38,7 +38,7 @@ where
         let dur = rand::thread_rng().gen_range(self.min_timeout_ms..self.max_timeout_ms + 1);
         let dur = Duration::from_millis(dur);
 
-        while !self.metadata.is_dead() {
+        while !self.state.is_dead() {
             let timed_out = timeout(dur, self.heartbeat_rx.changed()).await.is_err();
 
             if timed_out {
@@ -46,10 +46,10 @@ where
                     self.logger,
                     "Timed out waiting for heartbeat starting election."
                 );
-                self.metadata.lost_leader();
+                self.state.lost_leader();
                 return;
             }
-            self.metadata.saw_leader();
+            self.state.saw_leader();
             debug!(self.logger, "Got heartbeat re-setting heartbeat.");
         }
     }
@@ -74,11 +74,11 @@ mod tests {
             .temporary(true)
             .open()
             .expect("Failed to open database.");
-        let metadata = Arc::new(
-            Metadata::<MockPeer>::new(String::from("id"), HashMap::default(), &db)
-                .expect("Failed to create shared metadata."),
+        let state = Arc::new(
+            State::<MockPeer>::new(String::from("id"), HashMap::default(), &db)
+                .expect("Failed to create shared state."),
         );
-        let mut follower = Follower::new(&logger, metadata, heartbeat_rx);
+        let mut follower = Follower::new(&logger, state, heartbeat_rx);
         follower.max_timeout_ms = 2;
         follower.min_timeout_ms = 1;
         heartbeat_tx.send(()).expect("Failed to send wake up.");

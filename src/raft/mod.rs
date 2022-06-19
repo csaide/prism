@@ -1,31 +1,21 @@
 // (c) Copyright 2022 Christian Saide
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-mod candidate;
-mod commiter;
+mod cluster;
 mod consensus;
 mod error;
-mod follower;
-mod leader;
-mod log;
-mod metadata;
 mod models;
-mod peer;
+mod state;
 mod state_machine;
-mod syncer;
 #[cfg(test)]
 #[cfg(not(tarpaulin_include))]
 mod test_harness;
+mod workers;
 
-pub use candidate::Candidate;
-pub use commiter::Commiter;
+pub use cluster::*;
 pub use consensus::{ConcensusRepo, ConsensusMod};
 pub use error::{Error, Result};
-pub use follower::Follower;
-pub use leader::Leader;
-pub use log::Log;
-pub use metadata::{Metadata, State};
 pub use models::*;
-pub use peer::{Client, Peer, Peers};
+pub use state::*;
 pub use state_machine::StateMachine;
-pub use syncer::Syncer;
+pub use workers::*;

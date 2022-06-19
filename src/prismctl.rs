@@ -152,9 +152,18 @@ pub async fn run() -> ExitCode {
     });
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let peer1 = Peer::with_client(RaftServiceClient::connect(addr1).await.unwrap());
-    let peer2 = Peer::with_client(RaftServiceClient::connect(addr2).await.unwrap());
-    let peer3 = Peer::with_client(RaftServiceClient::connect(addr3).await.unwrap());
+    let peer1 = Peer::with_client(
+        addr1.to_string(),
+        RaftServiceClient::connect(addr1).await.unwrap(),
+    );
+    let peer2 = Peer::with_client(
+        addr2.to_string(),
+        RaftServiceClient::connect(addr2).await.unwrap(),
+    );
+    let peer3 = Peer::with_client(
+        addr3.to_string(),
+        RaftServiceClient::connect(addr3).await.unwrap(),
+    );
 
     cm1.append_peer(addr1.to_string(), peer1.clone());
     cm1.append_peer(addr2.to_string(), peer2.clone());

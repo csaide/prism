@@ -138,6 +138,14 @@ impl Log {
         }
         Ok(res)
     }
+
+    pub async fn flush(&self) -> Result<()> {
+        self.store
+            .flush_async()
+            .await
+            .map(|_| ())
+            .map_err(Error::from)
+    }
 }
 
 #[cfg(test)]

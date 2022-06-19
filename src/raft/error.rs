@@ -33,7 +33,7 @@ pub enum Error {
         Status,
     ),
     #[error("state error: invalid state for operation")]
-    InvalidState,
+    InvalidMode,
     #[error("state error: failed to find entry for index")]
     Missing,
     #[error("sled error: {0}")]

@@ -6,11 +6,11 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 use tokio::time::{timeout, Duration};
 
-use super::{AppendEntriesRequest, AppendEntriesResponse, Client, Log, Metadata, Result};
+use super::{AppendEntriesRequest, AppendEntriesResponse, Client, Log, Result, State};
 
 pub struct Leader<P> {
     logger: slog::Logger,
-    metadata: Arc<Metadata<P>>,
+    state: Arc<State<P>>,
     log: Arc<Log>,
     commit_tx: Arc<watch::Sender<()>>,
     submit_rx: watch::Receiver<()>,
@@ -22,14 +22,14 @@ where
 {
     pub fn new(
         logger: &slog::Logger,
-        metadata: Arc<Metadata<P>>,
+        state: Arc<State<P>>,
         log: Arc<Log>,
         commit_tx: Arc<watch::Sender<()>>,
         submit_rx: watch::Receiver<()>,
     ) -> Leader<P> {
         Leader {
             logger: logger.clone(),
-            metadata,
+            state,
             log,
             commit_tx,
             submit_rx,
@@ -43,14 +43,14 @@ where
                 return;
             }
         };
-        self.metadata.transition_leader(last_log_idx);
+        self.state.transition_leader(last_log_idx);
 
         let duration = Duration::from_millis(50);
-        while self.metadata.is_leader() {
-            let saved_term = self.metadata.get_current_term();
+        while self.state.is_leader() {
+            let saved_term = self.state.get_current_term();
 
             let (tx, rx) = mpsc::channel::<(usize, String, Result<AppendEntriesResponse>)>(
-                self.metadata.peers.len(),
+                self.state.peers.lock().len(),
             );
             self.send_requests(saved_term, &tx);
             drop(tx);
@@ -68,7 +68,7 @@ where
         saved_term: u128,
         tx: &mpsc::Sender<(usize, String, Result<AppendEntriesResponse>)>,
     ) {
-        for (peer_id, peer) in self.metadata.peers.lock().iter() {
+        for (peer_id, peer) in self.state.peers.lock().iter() {
             let prev_log_idx = peer.next_idx - 1;
             let mut prev_log_term = 0;
             if prev_log_idx > 0 {
@@ -81,8 +81,8 @@ where
 
             let entries = self.log.range(peer.next_idx, u128::MAX).unwrap_or_default();
             let req = AppendEntriesRequest {
-                leader_commit_idx: self.metadata.get_commit_idx(),
-                leader_id: self.metadata.id.clone(),
+                leader_commit_idx: self.state.get_commit_idx(),
+                leader_id: self.state.id.clone(),
                 prev_log_idx,
                 prev_log_term,
                 term: saved_term,
@@ -115,18 +115,18 @@ where
                 }
             };
 
-            if !self.metadata.is_leader() {
+            if !self.state.is_leader() {
                 return;
             }
             if resp.term > saved_term {
-                self.metadata.transition_follower(Some(resp.term));
+                self.state.transition_follower(Some(resp.term));
                 return;
             }
             if resp.term < saved_term {
                 continue;
             }
 
-            let mut locked_peers = self.metadata.peers.lock();
+            let mut locked_peers = self.state.peers.lock();
             let mut peer = match locked_peers.get_mut(&peer_id) {
                 Some(peer) => peer,
                 None => continue,
@@ -139,7 +139,7 @@ where
             peer.next_idx += entries as u128;
             peer.match_idx = peer.next_idx - 1;
 
-            let saved_commit = self.metadata.get_commit_idx();
+            let saved_commit = self.state.get_commit_idx();
             let start = saved_commit + 1;
             for idx in start..(self.log.len() + 1) as u128 {
                 match self.log.get(idx) {
@@ -151,19 +151,19 @@ where
                     _ => {}
                 };
                 if locked_peers.idx_matches(idx) {
-                    self.metadata.set_commit_idx(idx);
+                    self.state.set_commit_idx(idx);
                 }
             }
-            if saved_commit != self.metadata.get_commit_idx() {
+            if saved_commit != self.state.get_commit_idx() {
                 if let Err(e) = self.commit_tx.send(()) {
                     error!(self.logger, "Failed to send commit notification."; "error" => e.to_string());
                 }
                 if self
-                    .metadata
-                    .matches_last_cluster_config_idx(self.metadata.get_commit_idx())
-                    && !locked_peers.contains(&self.metadata.id)
+                    .state
+                    .matches_last_cluster_config_idx(self.state.get_commit_idx())
+                    && !locked_peers.contains(&self.state.id)
                 {
-                    self.metadata.transition_dead();
+                    self.state.transition_dead();
                     return;
                 }
             }
@@ -224,9 +224,9 @@ where
 //         peers.insert("grpc://localhost:12346".to_string(), Peer::new(peer2));
 //         peers.insert("grpc://localhost:12347".to_string(), Peer::new(peer3));
 
-//         let metadata = Arc::new(
+//         let state = Arc::new(
 //             Metadata::new(String::from("testing"), peers, &db)
-//                 .expect("Failed to create metadata instance."),
+//                 .expect("Failed to create state instance."),
 //         );
 
 //         let (submit_tx, submit_rx) = watch::channel(());
@@ -235,7 +235,7 @@ where
 
 //         let mut leader = Leader::new(
 //             &logger,
-//             metadata.clone(),
+//             state.clone(),
 //             log.clone(),
 //             commit_tx.clone(),
 //             submit_rx,

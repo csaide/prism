@@ -4,91 +4,14 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
 
-use super::{Client, Error, Peer, Peers, Result};
-
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub enum State {
-    Leader,
-    Follower,
-    Candidate,
-    Dead,
-}
+use super::{Client, Mode, Peer, Peers, PersistentState, Result};
 
 #[derive(Debug)]
-pub struct PersistentState {
-    tree: sled::Tree,
-}
-
-impl PersistentState {
-    pub fn new(db: &sled::Db) -> Result<PersistentState> {
-        let tree = db.open_tree("config")?;
-        Ok(PersistentState { tree })
-    }
-
-    pub fn get_voted_for(&self) -> Result<Option<String>> {
-        match self.tree.get("voted_for")? {
-            Some(ivec) => {
-                Ok(bincode::deserialize(&ivec).map_err(|e| Error::Serialize(e.to_string()))?)
-            }
-            None => Ok(None),
-        }
-    }
-
-    pub fn set_voted_for(&self, voted_for: Option<String>) -> Result<()> {
-        self.tree.insert(
-            "voted_for",
-            bincode::serialize(&voted_for).map_err(|e| Error::Serialize(e.to_string()))?,
-        )?;
-        self.tree.flush()?;
-        Ok(())
-    }
-
-    pub fn get_current_term(&self) -> Result<u128> {
-        match self.tree.get("current_term")? {
-            Some(ivec) => ivec
-                .as_ref()
-                .try_into()
-                .map(u128::from_be_bytes)
-                .map_err(Error::from),
-            None => Ok(1),
-        }
-    }
-
-    pub fn set_current_term(&self, term: u128) -> Result<()> {
-        self.tree.insert("current_term", &term.to_be_bytes())?;
-        Ok(())
-    }
-
-    pub fn incr_current_term(&self) -> Result<u128> {
-        self.tree
-            .update_and_fetch("current_term", |old: Option<&[u8]>| -> Option<Vec<u8>> {
-                let number = match old {
-                    Some(bytes) => {
-                        let array: [u8; 16] = bytes.try_into().unwrap();
-                        let number = u128::from_be_bytes(array);
-                        number + 1
-                    }
-                    None => 1,
-                };
-
-                Some(number.to_be_bytes().to_vec())
-            })?
-            .map(|ivec| {
-                ivec.as_ref()
-                    .try_into()
-                    .map(u128::from_be_bytes)
-                    .map_err(Error::from)
-            })
-            .unwrap_or(Ok(1))
-    }
-}
-
-#[derive(Debug)]
-pub struct Metadata<P> {
+pub struct State<P> {
     pub id: String,
 
     // Volatile state.
-    pub state: RwLock<State>,
+    pub mode: RwLock<Mode>,
     pub have_leader: RwLock<bool>,
     pub last_cluster_config_idx: RwLock<u128>,
     pub last_applied_idx: RwLock<u128>,
@@ -99,17 +22,17 @@ pub struct Metadata<P> {
     persistent: PersistentState,
 }
 
-impl<P> Metadata<P>
+impl<P> State<P>
 where
     P: Client + Send + Clone + 'static,
 {
-    pub fn new(id: String, peers: HashMap<String, Peer<P>>, db: &sled::Db) -> Result<Metadata<P>> {
+    pub fn new(id: String, peers: HashMap<String, Peer<P>>, db: &sled::Db) -> Result<State<P>> {
         let peers = Peers::bootstrap(id.clone(), peers, None);
         let persistent = PersistentState::new(db)?;
-        Ok(Metadata {
+        Ok(State {
             id,
             have_leader: RwLock::new(false),
-            state: RwLock::new(State::Follower),
+            mode: RwLock::new(Mode::Follower),
             last_cluster_config_idx: RwLock::new(0),
             commit_idx: RwLock::new(0),
             last_applied_idx: RwLock::new(0),
@@ -119,19 +42,19 @@ where
     }
 
     pub fn is_leader(&self) -> bool {
-        *self.state.read().unwrap() == State::Leader
+        *self.mode.read().unwrap() == Mode::Leader
     }
 
     pub fn is_candidate(&self) -> bool {
-        *self.state.read().unwrap() == State::Candidate
+        *self.mode.read().unwrap() == Mode::Candidate
     }
 
     pub fn is_follower(&self) -> bool {
-        *self.state.read().unwrap() == State::Follower
+        *self.mode.read().unwrap() == Mode::Follower
     }
 
     pub fn is_dead(&self) -> bool {
-        *self.state.read().unwrap() == State::Dead
+        *self.mode.read().unwrap() == Mode::Dead
     }
 
     pub fn saw_leader(&self) {
@@ -153,9 +76,9 @@ where
         }
     }
 
-    pub fn set_state(&self, state: State) {
-        let mut val = self.state.write().unwrap();
-        *val = state
+    pub fn set_mode(&self, mode: Mode) {
+        let mut val = self.mode.write().unwrap();
+        *val = mode
     }
 
     pub fn set_current_term(&self, term: u128) {
@@ -204,7 +127,7 @@ where
     }
 
     pub fn transition_follower(&self, term: Option<u128>) {
-        self.set_state(State::Follower);
+        self.set_mode(Mode::Follower);
         if let Some(term) = term {
             self.set_current_term(term);
         }
@@ -212,17 +135,17 @@ where
     }
 
     pub fn transition_candidate(&self) -> u128 {
-        self.set_state(State::Candidate);
+        self.set_mode(Mode::Candidate);
         self.set_voted_for(Some(self.id.clone()));
         self.incr_current_term()
     }
 
     pub fn transition_leader(&self, last_log_idx: u128) {
-        self.set_state(State::Leader);
-        self.peers.reset(last_log_idx);
+        self.set_mode(Mode::Leader);
+        self.peers.lock().reset(last_log_idx);
     }
 
     pub fn transition_dead(&self) {
-        self.set_state(State::Dead);
+        self.set_mode(Mode::Dead);
     }
 }

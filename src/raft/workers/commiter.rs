@@ -5,11 +5,11 @@ use std::sync::Arc;
 
 use tokio::sync::watch;
 
-use super::{Client, Entry, Log, Metadata, StateMachine};
+use super::{Client, Entry, Log, State, StateMachine};
 
 pub struct Commiter<P, S> {
     logger: slog::Logger,
-    metadata: Arc<Metadata<P>>,
+    state: Arc<State<P>>,
     log: Arc<Log>,
     state_machine: Arc<S>,
     commit_rx: watch::Receiver<()>,
@@ -22,14 +22,14 @@ where
 {
     pub fn new(
         logger: &slog::Logger,
-        metadata: Arc<Metadata<P>>,
+        state: Arc<State<P>>,
         log: Arc<Log>,
         state_machine: Arc<S>,
         commit_rx: watch::Receiver<()>,
     ) -> Commiter<P, S> {
         Commiter {
             logger: logger.new(o!("module" => "commiter")),
-            metadata,
+            state,
             log,
             state_machine,
             commit_rx,
@@ -37,9 +37,9 @@ where
     }
 
     pub async fn exec(&mut self) {
-        while !self.metadata.is_dead() && self.commit_rx.changed().await.is_ok() {
-            let last_applied_idx = self.metadata.get_last_applied_idx();
-            let commit_idx = self.metadata.get_commit_idx();
+        while !self.state.is_dead() && self.commit_rx.changed().await.is_ok() {
+            let last_applied_idx = self.state.get_last_applied_idx();
+            let commit_idx = self.state.get_commit_idx();
 
             if commit_idx <= last_applied_idx {
                 continue;
@@ -61,7 +61,7 @@ where
                 }
             }
 
-            self.metadata.set_last_applied_idx(commit_idx);
+            self.state.set_last_applied_idx(commit_idx);
         }
     }
 }

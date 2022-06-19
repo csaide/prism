@@ -5,13 +5,11 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use super::{
-    Client, ElectionResult, Log, Metadata, RequestVoteRequest, RequestVoteResponse, Result,
-};
+use super::{Client, ElectionResult, Log, RequestVoteRequest, RequestVoteResponse, Result, State};
 
 pub struct Candidate<P> {
     logger: slog::Logger,
-    metadata: Arc<Metadata<P>>,
+    state: Arc<State<P>>,
     log: Arc<Log>,
     saved_term: u128,
 }
@@ -22,20 +20,20 @@ where
 {
     pub fn new(
         logger: &slog::Logger,
-        metadata: Arc<Metadata<P>>,
+        state: Arc<State<P>>,
         log: Arc<Log>,
         saved_term: u128,
     ) -> Candidate<P> {
         Candidate {
             logger: logger.new(o!("module" => "candidate")),
-            metadata,
+            state,
             log,
             saved_term,
         }
     }
 
     pub async fn exec(&self) -> ElectionResult {
-        let (tx, rx) = mpsc::channel::<Result<RequestVoteResponse>>(self.metadata.peers.len());
+        let (tx, rx) = mpsc::channel::<Result<RequestVoteResponse>>(self.state.peers.lock().len());
 
         if let Err(e) = self.send_requests(tx) {
             error!(self.logger, "Failed to send vote requests."; "error" => e.to_string());
@@ -48,13 +46,13 @@ where
         let (last_log_idx, last_log_term) = self.log.last_log_idx_and_term()?;
 
         let request = RequestVoteRequest {
-            candidate_id: self.metadata.id.clone(),
+            candidate_id: self.state.id.clone(),
             last_log_idx,
             last_log_term,
             term: self.saved_term,
         };
 
-        for (_, peer) in self.metadata.peers.lock().iter() {
+        for (_, peer) in self.state.peers.lock().iter() {
             let mut cli = peer.clone();
             let req = request.clone();
             let tx = tx.clone();
@@ -72,7 +70,7 @@ where
     ) -> ElectionResult {
         let mut votes: usize = 1;
         while let Some(resp) = rx.recv().await {
-            if !self.metadata.is_candidate() {
+            if !self.state.is_candidate() {
                 return ElectionResult::Failed;
             }
 
@@ -89,7 +87,7 @@ where
                     self.logger,
                     "Encountered response with newer term, bailing out."
                 );
-                self.metadata.transition_follower(Some(resp.term));
+                self.state.transition_follower(Some(resp.term));
                 return ElectionResult::Failed;
             }
             if resp.term < self.saved_term {
@@ -101,12 +99,12 @@ where
             }
             if resp.vote_granted {
                 votes += 1;
-                if votes * 2 > self.metadata.peers.len() {
+                if votes > self.state.peers.lock().len() / 2 {
                     return ElectionResult::Success;
                 }
             }
         }
-        self.metadata.transition_follower(None);
+        self.state.transition_follower(None);
         ElectionResult::Failed
     }
 }
@@ -155,16 +153,14 @@ mod tests {
             })),
         };
         let mut peers = HashMap::default();
-        peers.insert(
-            "grpc://localhost:12345".to_string(),
-            Peer::with_client(peer1),
-        );
-        let metadata = Arc::new(
-            Metadata::new(String::from("testing"), peers, &db)
-                .expect("Failed to create metadata instance."),
+        let key = "grpc://localhost:12345".to_string();
+        peers.insert(key.clone(), Peer::with_client(key, peer1));
+        let state = Arc::new(
+            State::new(String::from("testing"), peers, &db)
+                .expect("Failed to create state instance."),
         );
 
-        let candidate = Candidate::new(&logger, metadata.clone(), log, 0);
+        let candidate = Candidate::new(&logger, state.clone(), log, 0);
         let result = tokio_test::block_on(candidate.exec());
         assert_eq!(result, ElectionResult::Failed);
     }
@@ -233,26 +229,20 @@ mod tests {
         };
 
         let mut peers = HashMap::default();
-        peers.insert(
-            "grpc://localhost:12345".to_string(),
-            Peer::with_client(peer1),
-        );
-        peers.insert(
-            "grpc://localhost:12346".to_string(),
-            Peer::with_client(peer2),
-        );
-        peers.insert(
-            "grpc://localhost:12347".to_string(),
-            Peer::with_client(peer3),
-        );
+        let key = "grpc://localhost:12345".to_string();
+        peers.insert(key.clone(), Peer::with_client(key, peer1));
+        let key = "grpc://localhost:12346".to_string();
+        peers.insert(key.clone(), Peer::with_client(key, peer2));
+        let key = "grpc://localhost:12347".to_string();
+        peers.insert(key.clone(), Peer::with_client(key, peer3));
 
-        let metadata = Arc::new(
-            Metadata::new(String::from("testing"), peers, &db)
-                .expect("Failed to create metadata instance."),
+        let state = Arc::new(
+            State::new(String::from("testing"), peers, &db)
+                .expect("Failed to create state instance."),
         );
-        let saved_term = metadata.transition_candidate();
+        let saved_term = state.transition_candidate();
 
-        let candidate = Candidate::new(&logger, metadata.clone(), log, saved_term);
+        let candidate = Candidate::new(&logger, state.clone(), log, saved_term);
         let result = tokio_test::block_on(candidate.exec());
         assert_eq!(result, ElectionResult::Success);
     }
@@ -286,22 +276,20 @@ mod tests {
             })),
         };
         let mut peers = HashMap::default();
-        peers.insert(
-            "grpc://localhost:12345".to_string(),
-            Peer::with_client(peer1),
-        );
+        let key = "grpc://localhost:12345".to_string();
+        peers.insert(key.clone(), Peer::with_client(key, peer1));
 
-        let metadata = Arc::new(
-            Metadata::new(String::from("testing"), peers, &db)
-                .expect("Failed to generate metadata instance."),
+        let state = Arc::new(
+            State::new(String::from("testing"), peers, &db)
+                .expect("Failed to generate state instance."),
         );
-        let saved_term = metadata.transition_candidate();
+        let saved_term = state.transition_candidate();
 
-        let candidate = Candidate::new(&logger, metadata.clone(), log, saved_term);
+        let candidate = Candidate::new(&logger, state.clone(), log, saved_term);
         let result = tokio_test::block_on(candidate.exec());
 
         assert_eq!(result, ElectionResult::Failed);
-        assert!(metadata.is_follower())
+        assert!(state.is_follower())
     }
 
     #[test]
@@ -330,18 +318,16 @@ mod tests {
             })),
         };
         let mut peers = HashMap::default();
-        peers.insert(
-            "grpc://localhost:12345".to_string(),
-            Peer::with_client(peer1),
-        );
+        let key = "grpc://localhost:12345".to_string();
+        peers.insert(key.clone(), Peer::with_client(key, peer1));
 
-        let metadata = Arc::new(
-            Metadata::new(String::from("testing"), peers, &db)
-                .expect("Failed to generate metadata instance"),
+        let state = Arc::new(
+            State::new(String::from("testing"), peers, &db)
+                .expect("Failed to generate state instance"),
         );
 
         let saved_term = 10;
-        let candidate = Candidate::new(&logger, metadata, log, saved_term);
+        let candidate = Candidate::new(&logger, state, log, saved_term);
         let result = tokio_test::block_on(candidate.exec());
         assert_eq!(result, ElectionResult::Failed);
     }

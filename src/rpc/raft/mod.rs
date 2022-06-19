@@ -229,7 +229,7 @@ mod proto {
     impl AddRequest {
         pub async fn into_raft(self) -> Result<AddServerRequest<RaftServiceClient<Channel>>> {
             let peer = RaftServiceClient::connect(self.member.clone()).await?;
-            let peer = Peer::with_client(peer);
+            let peer = Peer::with_client(self.member.clone(), peer);
             Ok(AddServerRequest {
                 id: self.member,
                 peer,

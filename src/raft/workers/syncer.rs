@@ -3,11 +3,11 @@
 
 use std::sync::Arc;
 
-use super::{AppendEntriesRequest, AppendEntriesResponse, Client, Log, Metadata, Peer, Result};
+use super::{AppendEntriesRequest, AppendEntriesResponse, Client, Log, Peer, Result, State};
 
 pub struct Syncer<P> {
     logger: slog::Logger,
-    metadata: Arc<Metadata<P>>,
+    state: Arc<State<P>>,
     log: Arc<Log>,
     peer: Peer<P>,
 }
@@ -18,21 +18,21 @@ where
 {
     pub fn new(
         logger: &slog::Logger,
-        metadata: Arc<Metadata<P>>,
+        state: Arc<State<P>>,
         log: Arc<Log>,
         peer: Peer<P>,
     ) -> Syncer<P> {
         Syncer {
             logger: logger.clone(),
-            metadata,
+            state,
             log,
             peer,
         }
     }
 
     pub async fn exec(&mut self) {
-        while !self.metadata.is_dead() {
-            let term = self.metadata.get_current_term();
+        while !self.state.is_dead() {
+            let term = self.state.get_current_term();
             let (entries, resp) = self.send_request(term).await;
             let resp = match resp {
                 Ok(resp) => resp,
@@ -70,8 +70,8 @@ where
             .range(self.peer.next_idx, u128::MAX)
             .unwrap_or_default();
         let req = AppendEntriesRequest {
-            leader_commit_idx: self.metadata.get_commit_idx(),
-            leader_id: self.metadata.id.clone(),
+            leader_commit_idx: self.state.get_commit_idx(),
+            leader_id: self.state.id.clone(),
             prev_log_idx,
             prev_log_term,
             term,
