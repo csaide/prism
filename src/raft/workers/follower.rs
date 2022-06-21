@@ -49,7 +49,6 @@ where
                 self.state.lost_leader();
                 return;
             }
-            self.state.saw_leader();
             debug!(self.logger, "Got heartbeat re-setting heartbeat.");
         }
     }

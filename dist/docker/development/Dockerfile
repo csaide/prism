@@ -20,6 +20,7 @@ RUN rustup component add rust-std \
     && rustup component add rustfmt \
     && rustup component add clippy \
     && rustup component add rust-src \
+    && rustup component add llvm-tools-preview \
     && rustup target add x86_64-unknown-linux-gnu \
     && rustup target add aarch64-unknown-linux-gnu \
     && rustup toolchain install nightly-x86_64-unknown-linux-gnu \

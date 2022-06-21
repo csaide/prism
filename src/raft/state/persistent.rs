@@ -32,6 +32,10 @@ impl PersistentState {
         Ok(())
     }
 
+    pub fn matches_term(&self, term: u128) -> Result<bool> {
+        self.get_current_term().map(|current| current == term)
+    }
+
     pub fn get_current_term(&self) -> Result<u128> {
         match self.tree.get("current_term")? {
             Some(ivec) => ivec

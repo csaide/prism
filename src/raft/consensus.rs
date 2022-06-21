@@ -19,7 +19,6 @@ use super::{
 pub struct ConsensusMod<P, S> {
     logger: slog::Logger,
 
-    // Persistent state.
     state: Arc<State<P>>,
     log: Arc<Log>,
     state_machine: Arc<S>,
@@ -141,7 +140,7 @@ where
             match self.candidate_loop(saved_term).await {
                 ElectionResult::Failed => continue,
                 ElectionResult::Success => {
-                    info!(self.logger, "Won the election!!!"; "id" => &self.state.id)
+                    info!(self.logger, "Won the election!!!")
                 }
             };
 
@@ -173,14 +172,10 @@ where
         if !self.state.is_leader() {
             return Err(Error::InvalidMode);
         }
-        info!(self.logger, "Appending cluster config entry.");
         let last_cluster_config_idx = self.log.append(Entry::ClusterConfig(cfg))?;
 
-        info!(self.logger, "Setting last cluster config index.");
         self.state
             .set_last_cluster_config_idx(last_cluster_config_idx);
-
-        info!(self.logger, "Waking leader loop for replication.");
         self.submit_tx.send(()).map_err(Error::from)
     }
 
@@ -232,6 +227,8 @@ where
             debug!(self.logger, "Accepting append entries request.");
             // Accept the request.
             self.heartbeat_tx.send(())?;
+            self.state.saw_leader(append_request.leader_id);
+
             response.success = true;
 
             if let Some(cfg) = self
