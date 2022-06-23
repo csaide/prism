@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use tokio::sync::watch;
 
-use super::{Client, Entry, Log, State, StateMachine};
+use super::{Client, Entry, Log, State, StateMachine, Watcher};
 
 pub struct Commiter<P, S> {
     logger: slog::Logger,
@@ -13,6 +13,7 @@ pub struct Commiter<P, S> {
     log: Arc<Log>,
     state_machine: Arc<S>,
     commit_rx: watch::Receiver<()>,
+    watcher: Arc<Watcher>,
 }
 
 impl<P, S> Commiter<P, S>
@@ -26,6 +27,7 @@ where
         log: Arc<Log>,
         state_machine: Arc<S>,
         commit_rx: watch::Receiver<()>,
+        watcher: Arc<Watcher>,
     ) -> Commiter<P, S> {
         Commiter {
             logger: logger.new(o!("module" => "commiter")),
@@ -33,6 +35,7 @@ where
             log,
             state_machine,
             commit_rx,
+            watcher,
         }
     }
 
@@ -53,10 +56,15 @@ where
                 }
             };
 
-            for entry in entries.drain(..) {
+            for (idx, entry) in entries.drain(..) {
                 use Entry::*;
                 match entry {
-                    Command(cmd) => self.state_machine.apply(cmd),
+                    // Put response on oneshot tx here....
+                    Command(cmd) => {
+                        info!(self.logger, "Executing command."; "idx" => idx);
+                        let result = self.state_machine.apply(cmd);
+                        self.watcher.command_applied(idx, result)
+                    }
                     _ => continue,
                 }
             }

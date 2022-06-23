@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::{
-    AddServerRequest, AddServerResponse, AppendEntriesRequest, AppendEntriesResponse, Client,
-    RemoveServerRequest, RemoveServerResponse, RequestVoteRequest, RequestVoteResponse, Result,
+    AppendEntriesRequest, AppendEntriesResponse, Client, RequestVoteRequest, RequestVoteResponse,
+    Result,
 };
 
 #[derive(Debug, Clone)]
@@ -55,21 +55,5 @@ where
             self.client = Some(client);
         }
         self.client.as_mut().unwrap().append(req).await
-    }
-
-    pub async fn add(&mut self, req: AddServerRequest<C>) -> Result<AddServerResponse> {
-        if self.client.is_none() {
-            let client = C::connect(self.id.clone()).await?;
-            self.client = Some(client);
-        }
-        self.client.as_mut().unwrap().add(req).await
-    }
-
-    pub async fn remove(&mut self, req: RemoveServerRequest) -> Result<RemoveServerResponse> {
-        if self.client.is_none() {
-            let client = C::connect(self.id.clone()).await?;
-            self.client = Some(client);
-        }
-        self.client.as_mut().unwrap().remove(req).await
     }
 }

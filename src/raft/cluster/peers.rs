@@ -4,6 +4,8 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 
+use crate::raft::ListServerResponse;
+
 use super::{Client, ClusterConfig, Peer, Result};
 
 #[derive(Debug)]
@@ -115,6 +117,15 @@ where
     pub fn to_cluster_config(&self, term: u128) -> ClusterConfig {
         ClusterConfig {
             term,
+            voters: self.voters.iter().map(|(id, _)| id).cloned().collect(),
+            replicas: self.replicas.iter().map(|(id, _)| id).cloned().collect(),
+        }
+    }
+
+    pub fn to_list_response(&self, term: u128) -> ListServerResponse {
+        ListServerResponse {
+            term,
+            leader: self.id.clone(),
             voters: self.voters.iter().map(|(id, _)| id).cloned().collect(),
             replicas: self.replicas.iter().map(|(id, _)| id).cloned().collect(),
         }

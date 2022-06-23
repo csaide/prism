@@ -1,0 +1,42 @@
+// (c) Copyright 2022 Christian Saide
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+syntax = "proto3";
+
+package frontend;
+
+message MutateRequest {
+    bytes client_id = 1;
+    uint64 sequence_num = 2;
+    bytes command = 3;
+}
+
+message MutateResponse {
+    string status = 1;
+    bytes response = 2;
+    string leader_hint = 3;
+}
+
+message ReadRequest {
+    bytes query = 1;
+}
+
+message ReadResponse {
+    string status = 1;
+    bytes response = 2;
+    string leader_hint = 3;
+}
+
+message RegisterRequest {}
+
+message RegisterResponse {
+    string status = 1;
+    bytes client_id = 2;
+    string leader_hint = 3;
+}
+
+service Frontend {
+    rpc Mutate (MutateRequest) returns (MutateResponse);
+    rpc Read (ReadRequest) returns (ReadResponse);
+    rpc Register (RegisterRequest) returns (RegisterResponse);
+}

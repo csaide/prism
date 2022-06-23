@@ -5,7 +5,7 @@ use std::{array::TryFromSliceError, result};
 
 use sled::CompareAndSwapError;
 use thiserror::Error;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, oneshot, watch};
 use tonic::Status;
 
 /// Custom Result wrapper to simplify usage.
@@ -25,6 +25,12 @@ pub enum Error {
         #[source]
         #[from]
         watch::error::SendError<()>,
+    ),
+    #[error("tokio oneshot recv error: {0}")]
+    Oneshot(
+        #[source]
+        #[from]
+        oneshot::error::RecvError,
     ),
     #[error("rpc error: {0}")]
     Rpc(

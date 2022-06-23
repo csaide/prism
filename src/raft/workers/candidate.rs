@@ -116,10 +116,7 @@ mod tests {
 
     use crate::{
         log,
-        raft::{
-            test_harness::MockPeer, AddServerResponse, AppendEntriesResponse, Error, Peer,
-            RemoveServerResponse,
-        },
+        raft::{test_harness::MockPeer, AppendEntriesResponse, Error, Peer},
     };
 
     use super::*;
@@ -144,12 +141,6 @@ mod tests {
                     term: 0,
                     vote_granted: false,
                 })
-            })),
-            add_resp: Arc::new(Box::new(|| -> Result<AddServerResponse> {
-                unimplemented!()
-            })),
-            remove_resp: Arc::new(Box::new(|| -> Result<RemoveServerResponse> {
-                unimplemented!()
             })),
         };
         let mut peers = HashMap::default();
@@ -186,12 +177,6 @@ mod tests {
                     vote_granted: false,
                 })
             })),
-            add_resp: Arc::new(Box::new(|| -> Result<AddServerResponse> {
-                unimplemented!()
-            })),
-            remove_resp: Arc::new(Box::new(|| -> Result<RemoveServerResponse> {
-                unimplemented!()
-            })),
         };
         let peer2 = MockPeer {
             append_resp: Arc::new(Box::new(|| -> Result<AppendEntriesResponse> {
@@ -203,12 +188,6 @@ mod tests {
                     vote_granted: true,
                 })
             })),
-            add_resp: Arc::new(Box::new(|| -> Result<AddServerResponse> {
-                unimplemented!()
-            })),
-            remove_resp: Arc::new(Box::new(|| -> Result<RemoveServerResponse> {
-                unimplemented!()
-            })),
         };
         let peer3 = MockPeer {
             append_resp: Arc::new(Box::new(|| -> Result<AppendEntriesResponse> {
@@ -219,12 +198,6 @@ mod tests {
                     term: 1,
                     vote_granted: true,
                 })
-            })),
-            add_resp: Arc::new(Box::new(|| -> Result<AddServerResponse> {
-                unimplemented!()
-            })),
-            remove_resp: Arc::new(Box::new(|| -> Result<RemoveServerResponse> {
-                unimplemented!()
             })),
         };
 
@@ -268,12 +241,6 @@ mod tests {
                     vote_granted: false,
                 })
             })),
-            add_resp: Arc::new(Box::new(|| -> Result<AddServerResponse> {
-                unimplemented!()
-            })),
-            remove_resp: Arc::new(Box::new(|| -> Result<RemoveServerResponse> {
-                unimplemented!()
-            })),
         };
         let mut peers = HashMap::default();
         let key = "grpc://localhost:12345".to_string();
@@ -309,12 +276,6 @@ mod tests {
             })),
             vote_resp: Arc::new(Box::new(|| -> Result<RequestVoteResponse> {
                 Err(Error::Missing)
-            })),
-            add_resp: Arc::new(Box::new(|| -> Result<AddServerResponse> {
-                unimplemented!()
-            })),
-            remove_resp: Arc::new(Box::new(|| -> Result<RemoveServerResponse> {
-                unimplemented!()
             })),
         };
         let mut peers = HashMap::default();

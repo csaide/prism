@@ -10,9 +10,11 @@ use crate::raft::{Commiter, Flusher, Leader};
 
 use super::{
     AddServerRequest, AddServerResponse, AppendEntriesRequest, AppendEntriesResponse, Candidate,
-    Client, ClusterConfig, Command, ElectionResult, Entry, Error, Follower, Log, Peer,
+    Client, ClusterConfig, Command, ElectionResult, Entry, Error, Follower, ListServerRequest,
+    ListServerResponse, Log, MutateStateRequest, MutateStateResponse, Peer, ReadStateRequest,
+    ReadStateResponse, RegisterClientRequest, RegisterClientResponse, Registration,
     RemoveServerRequest, RemoveServerResponse, RequestVoteRequest, RequestVoteResponse, Result,
-    State, StateMachine, Syncer,
+    State, StateMachine, Syncer, Watcher,
 };
 
 #[derive(Debug, Clone)]
@@ -22,6 +24,7 @@ pub struct ConsensusMod<P, S> {
     state: Arc<State<P>>,
     log: Arc<Log>,
     state_machine: Arc<S>,
+    watcher: Arc<Watcher>,
 
     heartbeat_tx: Arc<Sender<()>>,
     heartbeat_rx: Receiver<()>,
@@ -54,6 +57,7 @@ where
             state: Arc::new(State::new(id, peers, db)?),
             log: Arc::new(log),
             state_machine: Arc::new(state_machine),
+            watcher: Arc::new(Watcher::default()),
             heartbeat_tx: Arc::new(heartbeat_tx),
             heartbeat_rx,
             submit_tx: Arc::new(submit_tx),
@@ -114,6 +118,7 @@ where
             self.log.clone(),
             self.state_machine.clone(),
             self.commit_rx.clone(),
+            self.watcher.clone(),
         );
         tokio::task::spawn(async move { commiter.exec().await });
     }
@@ -148,7 +153,7 @@ where
         }
     }
 
-    pub async fn submit_command(&self, command: Vec<u8>) -> Result<()> {
+    pub async fn submit_command(&self, command: Vec<u8>) -> Result<Vec<u8>> {
         if self.state.is_dead() {
             return Err(Error::Dead);
         }
@@ -157,12 +162,16 @@ where
         }
 
         let current_term = self.state.get_current_term();
-        self.log.append(Entry::Command(Command {
+        let idx = self.log.append(Entry::Command(Command {
             term: current_term,
             data: command,
         }))?;
 
-        self.submit_tx.send(()).map_err(Error::from)
+        let rx = self.watcher.register_command_watch(idx);
+        self.submit_tx.send(())?;
+
+        let res = rx.await.map_err(Error::from)?;
+        res
     }
 
     async fn submit_cluster_config(&self, cfg: ClusterConfig) -> Result<()> {
@@ -176,7 +185,29 @@ where
 
         self.state
             .set_last_cluster_config_idx(last_cluster_config_idx);
-        self.submit_tx.send(()).map_err(Error::from)
+
+        let rx = self
+            .watcher
+            .register_cluster_config_watch(last_cluster_config_idx);
+        self.submit_tx.send(())?;
+        rx.await.map_err(Error::from)
+    }
+
+    // TODO(csaide): Fix this to wait for commit.
+    async fn submit_registration(&self, reg: Registration) -> Result<u128> {
+        if self.state.is_dead() {
+            return Err(Error::Dead);
+        }
+        if !self.state.is_leader() {
+            return Err(Error::InvalidMode);
+        }
+        let idx = self.log.append(Entry::Registration(reg))?;
+
+        let rx = self.watcher.register_registration_watch(idx);
+        self.submit_tx.send(())?;
+        rx.await?;
+
+        Ok(idx)
     }
 
     pub async fn append(
@@ -357,10 +388,65 @@ where
             status: "OK".to_string(),
         })
     }
+
+    pub async fn list_members(&self, _: ListServerRequest) -> Result<ListServerResponse> {
+        if self.state.is_dead() {
+            return Err(Error::Dead);
+        }
+        if !self.state.is_leader() {
+            return Err(Error::InvalidMode);
+        }
+
+        let term = self.state.get_current_term();
+        Ok(self.state.peers.lock().to_list_response(term))
+    }
+
+    pub async fn register(&self, _: RegisterClientRequest) -> Result<RegisterClientResponse> {
+        if self.state.is_dead() {
+            return Err(Error::Dead);
+        }
+        if !self.state.is_leader() {
+            return Err(Error::InvalidMode);
+        }
+
+        // TODO(csaide): Fix this to wait for commit.
+        let term = self.state.get_current_term();
+        let reg = Registration { term };
+
+        let idx = self.submit_registration(reg).await?;
+
+        Ok(RegisterClientResponse {
+            client_id: idx.to_be_bytes().to_vec(),
+            leader_hint: self.state.id.clone(),
+            status: "OK".to_string(),
+        })
+    }
+
+    pub async fn mutate_state(
+        &self,
+        mutate_request: MutateStateRequest,
+    ) -> Result<MutateStateResponse> {
+        if self.state.is_dead() {
+            return Err(Error::Dead);
+        }
+        if !self.state.is_leader() {
+            return Err(Error::InvalidMode);
+        }
+        let res = self.submit_command(mutate_request.command).await?;
+        Ok(MutateStateResponse {
+            leader_hint: self.state.id.clone(),
+            response: res,
+            status: "OK".to_string(),
+        })
+    }
+
+    pub async fn read_state(&self, _read_request: ReadStateRequest) -> Result<ReadStateResponse> {
+        unimplemented!()
+    }
 }
 
 #[tonic::async_trait]
-pub trait ConcensusRepo<P>: Send + Sync + 'static {
+pub trait ConcensusRepo<P>: Send + Sync + Clone + 'static {
     async fn append_entries(
         &self,
         mut append_request: AppendEntriesRequest,
@@ -371,13 +457,23 @@ pub trait ConcensusRepo<P>: Send + Sync + 'static {
         &self,
         remove_request: RemoveServerRequest,
     ) -> Result<RemoveServerResponse>;
+    async fn list_servers(&self, list_request: ListServerRequest) -> Result<ListServerResponse>;
+    async fn mutate_request(
+        &self,
+        mutate_request: MutateStateRequest,
+    ) -> Result<MutateStateResponse>;
+    async fn read_request(&self, read_request: ReadStateRequest) -> Result<ReadStateResponse>;
+    async fn register_client(
+        &self,
+        register_request: RegisterClientRequest,
+    ) -> Result<RegisterClientResponse>;
 }
 
 #[tonic::async_trait]
 impl<P, S> ConcensusRepo<P> for ConsensusMod<P, S>
 where
     P: Client + Send + Clone + 'static,
-    S: StateMachine + Send + Sync + 'static,
+    S: StateMachine + Send + Clone + Sync + 'static,
 {
     async fn append_entries(
         &self,
@@ -396,5 +492,27 @@ where
         remove_request: RemoveServerRequest,
     ) -> Result<RemoveServerResponse> {
         self.remove_member(remove_request).await
+    }
+
+    async fn list_servers(&self, list_request: ListServerRequest) -> Result<ListServerResponse> {
+        self.list_members(list_request).await
+    }
+
+    async fn mutate_request(
+        &self,
+        mutate_request: MutateStateRequest,
+    ) -> Result<MutateStateResponse> {
+        self.mutate_state(mutate_request).await
+    }
+
+    async fn read_request(&self, read_request: ReadStateRequest) -> Result<ReadStateResponse> {
+        self.read_state(read_request).await
+    }
+
+    async fn register_client(
+        &self,
+        register_request: RegisterClientRequest,
+    ) -> Result<RegisterClientResponse> {
+        self.register(register_request).await
     }
 }

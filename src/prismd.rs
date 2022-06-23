@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::raft::{ConsensusMod, Peer};
-use crate::rpc::raft::{AddRequest, RaftServiceClient};
+use crate::rpc::cluster::{AddRequest, ClusterClient};
 use crate::rpc::server::serve;
 use crate::{hash, log};
 
@@ -88,7 +88,7 @@ pub async fn run() -> ExitCode {
             return exitcode::IOERR;
         }
     };
-    let sm = hash::HashState::new();
+    let sm = hash::HashState::new(&root_logger);
 
     let mut peers = HashMap::default();
     if let Some(mut bootstrap) = cfg.bootstrap {
@@ -105,7 +105,7 @@ pub async fn run() -> ExitCode {
             let mut ticker = interval(Duration::from_millis(100));
             loop {
                 ticker.tick().await;
-                let mut client = match RaftServiceClient::connect(join.clone()).await {
+                let mut client = match ClusterClient::connect(join.clone()).await {
                     Ok(client) => client,
                     Err(e) => {
                         error!(join_logger, "Failed to connect to leader to join cluster."; "error" => e.to_string());
@@ -114,8 +114,9 @@ pub async fn run() -> ExitCode {
                 };
                 let req = AddRequest {
                     member: format!("grpc://127.0.0.1:{}", port),
+                    replica: false,
                 };
-                match client.add_server(req).await {
+                match client.add(req).await {
                     Err(e) => {
                         error!(join_logger, "Failed to add self to cluster... retrying."; "error" => e.to_string());
 

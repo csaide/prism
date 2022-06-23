@@ -11,7 +11,8 @@ use tokio::time::{interval, Duration};
 
 use crate::hash::Command;
 use crate::raft::{ConsensusMod, Peer};
-use crate::rpc::raft::RaftServiceClient;
+use crate::rpc::frontend::{FrontendClient, MutateRequest};
+use crate::rpc::raft::RaftClient;
 use crate::rpc::server::serve;
 use crate::{hash, log};
 
@@ -28,9 +29,52 @@ const PRISMCTL: &str = "prismctl";
 struct PrismctlConfig {
     #[structopt(flatten)]
     log_config: log::Config,
+    #[structopt(
+        long = "cluster-leader",
+        short = "c",
+        env = "PRISM_LEADER_HOST",
+        help = "The cluster leader to operate against.",
+        long_help = "Sets hostname of the leader of the cluster to operate against.",
+        default_value = "grpc://127.0.0.1:8081",
+        takes_value = true
+    )]
+    leader: String,
 }
 
 pub async fn run() -> ExitCode {
+    let cfg = match crate::base_config::<PrismctlConfig>(PRISMCTL) {
+        Ok(cfg) => cfg,
+        Err(code) => return code,
+    };
+
+    let root_logger = log::new(&cfg.log_config, PRISMCTL, crate_version!());
+    info!(root_logger, "Hello world!");
+
+    let mut client = match FrontendClient::connect(cfg.leader).await {
+        Ok(client) => client,
+        Err(e) => {
+            error!(root_logger, "Failed to connect to leader."; "error" => e.to_string());
+            return exitcode::IOERR;
+        }
+    };
+
+    let cmd = hash::Command::Insert("hello".to_string(), 42);
+    let req = MutateRequest {
+        command: cmd.to_bytes(),
+        ..Default::default()
+    };
+
+    match client.mutate(req).await {
+        Ok(_) => {} // TODO(csaide): Response handling yo.
+        Err(e) => {
+            error!(root_logger, "Failed to call mutate rpc."; "error" => e.to_string());
+        }
+    };
+
+    exitcode::OK
+}
+
+pub async fn run_old() -> ExitCode {
     let cfg = match crate::base_config::<PrismctlConfig>(PRISMCTL) {
         Ok(cfg) => cfg,
         Err(code) => return code,
@@ -44,7 +88,7 @@ pub async fn run() -> ExitCode {
     let addr3 = "grpc://127.0.0.1:8083";
 
     let db1 = sled::Config::default().temporary(true).open().unwrap();
-    let sm1 = hash::HashState::new();
+    let sm1 = hash::HashState::new(&root_logger);
     let mut cm1 = ConsensusMod::new(
         addr1.to_string(),
         HashMap::default(),
@@ -57,7 +101,7 @@ pub async fn run() -> ExitCode {
     let srv1 = serve(sock_addr1, cm1.clone(), root_logger.clone());
 
     let db2 = sled::Config::default().temporary(true).open().unwrap();
-    let sm2 = hash::HashState::new();
+    let sm2 = hash::HashState::new(&root_logger);
     let mut cm2 = ConsensusMod::new(
         addr2.to_string(),
         HashMap::default(),
@@ -70,7 +114,7 @@ pub async fn run() -> ExitCode {
     let srv2 = serve(sock_addr2, cm2.clone(), root_logger.clone());
 
     let db3 = sled::Config::default().temporary(true).open().unwrap();
-    let sm3 = hash::HashState::new();
+    let sm3 = hash::HashState::new(&root_logger);
     let mut cm3 = ConsensusMod::new(
         addr3.to_string(),
         HashMap::default(),
@@ -152,18 +196,9 @@ pub async fn run() -> ExitCode {
     });
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let peer1 = Peer::with_client(
-        addr1.to_string(),
-        RaftServiceClient::connect(addr1).await.unwrap(),
-    );
-    let peer2 = Peer::with_client(
-        addr2.to_string(),
-        RaftServiceClient::connect(addr2).await.unwrap(),
-    );
-    let peer3 = Peer::with_client(
-        addr3.to_string(),
-        RaftServiceClient::connect(addr3).await.unwrap(),
-    );
+    let peer1 = Peer::with_client(addr1.to_string(), RaftClient::connect(addr1).await.unwrap());
+    let peer2 = Peer::with_client(addr2.to_string(), RaftClient::connect(addr2).await.unwrap());
+    let peer3 = Peer::with_client(addr3.to_string(), RaftClient::connect(addr3).await.unwrap());
 
     cm1.append_peer(addr1.to_string(), peer1.clone());
     cm1.append_peer(addr2.to_string(), peer2.clone());

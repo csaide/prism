@@ -16,15 +16,20 @@ message ClusterConfig {
     repeated string replicas = 3;
 }
 
+message Registration {
+    bytes term = 1;
+}
+
 message Entry {
     oneof payload {
         Command command = 1;
-        ClusterConfig config = 3;
+        ClusterConfig config = 2;
+        Registration registration = 3;
     }
 }
 
-// Describes a request represents either a heartbeat from the cluster leader, or a set of entires to
-// append to the recipients log.
+/// Describes a request represents either a heartbeat from the cluster leader, or a set of entires to
+/// append to the recipients log.
 message AppendRequest {
     bytes term = 1;
     string leader_id = 2;
@@ -34,13 +39,13 @@ message AppendRequest {
     repeated Entry entries = 6;
 }
 
-// Describes the response to the append request, and whether or not it was successful.
+/// Describes the response to the append request, and whether or not it was successful.
 message AppendResponse {
     bytes term = 1;
     bool success = 2;
 }
 
-// Describes a request from a cluster member attempting to declare itself the cluster leader.
+/// Describes a request from a cluster member attempting to declare itself the cluster leader.
 message VoteRequest {
     bytes term = 1;
     string candidate_id = 2;
@@ -48,46 +53,18 @@ message VoteRequest {
     bytes last_log_term = 4;
 }
 
-// Describes the response to the vote request from the candidate and whether or not the local member,
-// granted its vote to said candidate.
+/// Describes the response to the vote request from the candidate and whether or not the local member,
+/// granted its vote to said candidate.
 message VoteResponse {
     bytes term = 1;
     bool vote_granted = 2;
 }
 
-/// Describes the request to add a given member to the cluster.
-message AddRequest {
-    string member = 1;
-}
-
-/// Describes the response to adding a server to the cluster.
-message AddResponse {
-    string status = 1;
-    string leader_hint = 2;
-}
-
-/// Describes the request to remove a given member from the cluster.
-message RemoveRequest {
-    string member = 1;
-}
-
-/// Describes the response to removing a server from the cluster.
-message RemoveResponse {
-    string status = 1;
-    string leader_hint = 2;
-}
-
-// The [RaftService] exposes raft concensus algorithm RPC's.
-service RaftService {
+/// The [Raft] exposes raft concensus algorithm RPC's.
+service Raft {
     // AppendEntries implements the heartbeat and log replication algorithms from the raft protocol.
     rpc AppendEntries (AppendRequest) returns (AppendResponse);
 
     // RequestVote implements the voting algorithm from the raft protocol.
     rpc RequestVote (VoteRequest) returns (VoteResponse);
-
-    /// AddServer implements the cluseter add member algorithm from the raft protocol.
-    rpc AddServer (AddRequest) returns (AddResponse);
-
-    /// RemoveServer implements the cluster remove member algorithm from the raft protocol.
-    rpc RemoveServer(RemoveRequest) returns (RemoveResponse);
 }

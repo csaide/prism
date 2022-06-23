@@ -79,7 +79,13 @@ where
                     .unwrap_or(0);
             }
 
-            let entries = self.log.range(peer.next_idx, u128::MAX).unwrap_or_default();
+            let entries = self
+                .log
+                .range(peer.next_idx, u128::MAX)
+                .unwrap_or_default()
+                .drain(..)
+                .map(|(_, entry)| entry)
+                .collect();
             let req = AppendEntriesRequest {
                 leader_commit_idx: self.state.get_commit_idx(),
                 leader_id: self.state.id.clone(),
@@ -110,7 +116,7 @@ where
             let resp = match resp {
                 Ok(resp) => resp,
                 Err(e) => {
-                    error!(self.logger, "Failed to execute AppendEntries rpc."; "error" => e.to_string());
+                    error!(self.logger, "Failed to execute AppendEntries rpc."; "error" => e.to_string(), "peer" => peer_id);
                     continue;
                 }
             };

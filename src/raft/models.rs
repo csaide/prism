@@ -29,11 +29,18 @@ pub struct ClusterConfig {
     pub replicas: Vec<String>,
 }
 
+/// A [Registration] represents a client that is registering itself with the cluster.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd)]
+pub struct Registration {
+    pub term: u128,
+}
+
 /// An [Entry] represents a single log entry in a given cluster members persistent log.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd)]
 pub enum Entry {
     Command(Command),
     ClusterConfig(ClusterConfig),
+    Registration(Registration),
 }
 
 impl Entry {
@@ -41,6 +48,7 @@ impl Entry {
         match self {
             Entry::Command(cmd) => cmd.term,
             Entry::ClusterConfig(cfg) => cfg.term,
+            Entry::Registration(reg) => reg.term,
         }
     }
     pub fn is_cluster_config(&self) -> bool {
@@ -101,6 +109,7 @@ pub struct RequestVoteResponse {
 #[derive(Debug, Clone)]
 pub struct AddServerRequest<P> {
     pub id: String,
+    pub replica: bool,
     pub peer: Peer<P>,
 }
 
@@ -118,5 +127,52 @@ pub struct RemoveServerRequest {
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct RemoveServerResponse {
     pub status: String,
+    pub leader_hint: String,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct ListServerRequest {}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct ListServerResponse {
+    pub term: u128,
+    pub voters: Vec<String>,
+    pub replicas: Vec<String>,
+    pub leader: String,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct MutateStateRequest {
+    pub client_id: Vec<u8>,
+    pub sequence_num: u64,
+    pub command: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct MutateStateResponse {
+    pub status: String,
+    pub response: Vec<u8>,
+    pub leader_hint: String,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct ReadStateRequest {
+    pub query: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct ReadStateResponse {
+    pub status: String,
+    pub response: Vec<u8>,
+    pub leader_hint: String,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct RegisterClientRequest {}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct RegisterClientResponse {
+    pub status: String,
+    pub client_id: Vec<u8>,
     pub leader_hint: String,
 }

@@ -37,6 +37,7 @@ impl Log {
         match Entry::from_ivec(entry)? {
             Command(cmd) => Ok((idx, cmd.term)),
             ClusterConfig(cfg) => Ok((idx, cfg.term)),
+            Registration(reg) => Ok((idx, reg.term)),
         }
     }
 
@@ -68,6 +69,7 @@ impl Log {
         match entry {
             Command(cmd) => Ok(cmd.term == term),
             ClusterConfig(cfg) => Ok(cfg.term == term),
+            Registration(reg) => Ok(reg.term == term),
         }
     }
 
@@ -78,17 +80,20 @@ impl Log {
         }
     }
 
-    pub fn range(&self, start: u128, end: u128) -> Result<Vec<Entry>> {
+    pub fn range(&self, start: u128, end: u128) -> Result<Vec<(u128, Entry)>> {
         let mut payloads = Vec::default();
         let start = start.to_be_bytes();
         let end = end.to_be_bytes();
         for result in self
             .store
             .range(start..end)
-            .map(|result| result.map(|(_, entry)| entry).map_err(Error::from))
+            .map(|result| result.map_err(Error::from))
         {
             match result {
-                Ok(v) => payloads.push(Entry::from_ivec(v)?),
+                Ok((id, entry)) => payloads.push((
+                    id.as_ref().try_into().map(u128::from_be_bytes)?,
+                    Entry::from_ivec(entry)?,
+                )),
                 Err(e) => return Err(e),
             };
         }
@@ -118,7 +123,7 @@ impl Log {
         let mut log_insert_index = prev_log_idx + 1;
         let mut entries_insert_index: usize = 0;
         loop {
-            if log_insert_index >= self.len() as u128 || entries_insert_index >= entries.len() {
+            if log_insert_index > self.len() as u128 || entries_insert_index >= entries.len() {
                 break;
             }
             if !self.idx_and_term_match(log_insert_index, entries[entries_insert_index].term())? {

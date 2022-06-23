@@ -1,0 +1,51 @@
+// (c) Copyright 2022 Christian Saide
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+syntax = "proto3";
+
+package cluster;
+
+/// Describes the request to add a given member to the cluster.
+message AddRequest {
+    string member = 1;
+    bool replica = 2;
+}
+
+/// Describes the response to adding a server to the cluster.
+message AddResponse {
+    string status = 1;
+    string leader_hint = 2;
+}
+
+/// Describes the request to remove a given member from the cluster.
+message RemoveRequest {
+    string member = 1;
+}
+
+/// Describes the response to removing a server from the cluster.
+message RemoveResponse {
+    string status = 1;
+    string leader_hint = 2;
+}
+
+/// Describes a request to enumerate cluster members.
+message ListRequest {}
+
+/// Describes the repsonse from enumerating the cluster meembers.
+message ListResponse {
+    bytes term = 1;
+    repeated string voters = 2;
+    repeated string replicas = 3;
+    string leader = 4;
+}
+
+service Cluster {
+    /// Add implements the cluseter add member algorithm from the raft protocol.
+    rpc Add (AddRequest) returns (AddResponse);
+
+    /// Remove implements the cluster remove member algorithm from the raft protocol.
+    rpc Remove (RemoveRequest) returns (RemoveResponse);
+
+    /// List all current memebers and the leader, as of the last commited cluster configuration.
+    rpc List (ListRequest) returns (ListResponse);
+}

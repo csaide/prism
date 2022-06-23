@@ -68,7 +68,10 @@ where
         let entries = self
             .log
             .range(self.peer.next_idx, u128::MAX)
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .drain(..)
+            .map(|(_, entry)| entry)
+            .collect();
         let req = AppendEntriesRequest {
             leader_commit_idx: self.state.get_commit_idx(),
             leader_id: self.state.id.clone(),
