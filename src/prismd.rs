@@ -144,7 +144,8 @@ pub async fn run() -> ExitCode {
     };
 
     let addr = format!("0.0.0.0:{}", cfg.rpc_port).parse().unwrap();
-    let srv = serve(addr, cm.clone(), root_logger.clone());
+    let repo = cm.get_repo().unwrap();
+    let srv = serve(addr, repo, root_logger.clone());
 
     select! {
         _ = cm.start() => {

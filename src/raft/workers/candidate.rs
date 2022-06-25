@@ -7,49 +7,47 @@ use tokio::sync::mpsc;
 
 use super::{Client, ElectionResult, Log, RequestVoteRequest, RequestVoteResponse, Result, State};
 
+#[derive(Debug)]
 pub struct Candidate<P> {
     logger: slog::Logger,
     state: Arc<State<P>>,
     log: Arc<Log>,
-    saved_term: u128,
 }
 
 impl<P> Candidate<P>
 where
     P: Client + Send + Clone + 'static,
 {
-    pub fn new(
-        logger: &slog::Logger,
-        state: Arc<State<P>>,
-        log: Arc<Log>,
-        saved_term: u128,
-    ) -> Candidate<P> {
+    pub fn new(logger: &slog::Logger, state: Arc<State<P>>, log: Arc<Log>) -> Candidate<P> {
         Candidate {
             logger: logger.new(o!("module" => "candidate")),
             state,
             log,
-            saved_term,
         }
     }
 
-    pub async fn exec(&self) -> ElectionResult {
+    pub async fn exec(&self, saved_term: u128) -> ElectionResult {
         let (tx, rx) = mpsc::channel::<Result<RequestVoteResponse>>(self.state.peers.lock().len());
 
-        if let Err(e) = self.send_requests(tx) {
+        if let Err(e) = self.send_requests(saved_term, tx) {
             error!(self.logger, "Failed to send vote requests."; "error" => e.to_string());
             return ElectionResult::Failed;
         };
-        self.handle_responses(rx).await
+        self.handle_responses(saved_term, rx).await
     }
 
-    pub fn send_requests(&self, tx: mpsc::Sender<Result<RequestVoteResponse>>) -> Result<()> {
+    pub fn send_requests(
+        &self,
+        saved_term: u128,
+        tx: mpsc::Sender<Result<RequestVoteResponse>>,
+    ) -> Result<()> {
         let (last_log_idx, last_log_term) = self.log.last_log_idx_and_term()?;
 
         let request = RequestVoteRequest {
             candidate_id: self.state.id.clone(),
             last_log_idx,
             last_log_term,
-            term: self.saved_term,
+            term: saved_term,
         };
 
         for (_, peer) in self.state.peers.lock().iter() {
@@ -66,6 +64,7 @@ where
 
     pub async fn handle_responses(
         &self,
+        saved_term: u128,
         mut rx: mpsc::Receiver<Result<RequestVoteResponse>>,
     ) -> ElectionResult {
         let mut votes: usize = 1;
@@ -82,7 +81,7 @@ where
                 }
             };
 
-            if resp.term > self.saved_term {
+            if resp.term > saved_term {
                 debug!(
                     self.logger,
                     "Encountered response with newer term, bailing out."
@@ -90,7 +89,7 @@ where
                 self.state.transition_follower(Some(resp.term));
                 return ElectionResult::Failed;
             }
-            if resp.term < self.saved_term {
+            if resp.term < saved_term {
                 debug!(
                     self.logger,
                     "Encountered response with older term, ignoring."
@@ -151,8 +150,8 @@ mod tests {
                 .expect("Failed to create state instance."),
         );
 
-        let candidate = Candidate::new(&logger, state.clone(), log, 0);
-        let result = tokio_test::block_on(candidate.exec());
+        let candidate = Candidate::new(&logger, state.clone(), log);
+        let result = tokio_test::block_on(candidate.exec(0));
         assert_eq!(result, ElectionResult::Failed);
     }
 
@@ -215,8 +214,8 @@ mod tests {
         );
         let saved_term = state.transition_candidate();
 
-        let candidate = Candidate::new(&logger, state.clone(), log, saved_term);
-        let result = tokio_test::block_on(candidate.exec());
+        let candidate = Candidate::new(&logger, state.clone(), log);
+        let result = tokio_test::block_on(candidate.exec(saved_term));
         assert_eq!(result, ElectionResult::Success);
     }
 
@@ -252,8 +251,8 @@ mod tests {
         );
         let saved_term = state.transition_candidate();
 
-        let candidate = Candidate::new(&logger, state.clone(), log, saved_term);
-        let result = tokio_test::block_on(candidate.exec());
+        let candidate = Candidate::new(&logger, state.clone(), log);
+        let result = tokio_test::block_on(candidate.exec(saved_term));
 
         assert_eq!(result, ElectionResult::Failed);
         assert!(state.is_follower())
@@ -288,8 +287,8 @@ mod tests {
         );
 
         let saved_term = 10;
-        let candidate = Candidate::new(&logger, state, log, saved_term);
-        let result = tokio_test::block_on(candidate.exec());
+        let candidate = Candidate::new(&logger, state, log);
+        let result = tokio_test::block_on(candidate.exec(saved_term));
         assert_eq!(result, ElectionResult::Failed);
     }
 }

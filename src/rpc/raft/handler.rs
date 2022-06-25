@@ -1,23 +1,21 @@
 // (c) Copyright 2022 Christian Saide
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use tonic::{transport::Channel, Request, Response, Status};
+use tonic::{Request, Response, Status};
 
-use super::{
-    proto::raft_server::Raft, AppendRequest, AppendResponse, RaftClient, VoteRequest, VoteResponse,
-};
-use crate::raft::ConcensusRepo;
+use super::{proto::raft_server::Raft, AppendRequest, AppendResponse, VoteRequest, VoteResponse};
+use crate::raft::RaftHandler;
 
-pub struct Handler<CM> {
-    cm: CM,
+pub struct Handler<H> {
+    h: H,
 }
 
-impl<CM> Handler<CM>
+impl<H> Handler<H>
 where
-    CM: ConcensusRepo<RaftClient<Channel>>,
+    H: RaftHandler,
 {
-    pub fn new(cm: CM) -> Handler<CM> {
-        Handler { cm }
+    pub fn new(h: H) -> Handler<H> {
+        Handler { h }
     }
 
     pub async fn append(
@@ -26,7 +24,7 @@ where
     ) -> Result<Response<AppendResponse>, Status> {
         let req = req.into_inner();
         let req = req.into_raft()?;
-        let resp = self.cm.append_entries(req).await?;
+        let resp = self.h.append_entries(req).await?;
         AppendResponse::from_raft(resp)
             .map(Response::new)
             .map_err(|e| e.into())
@@ -35,7 +33,7 @@ where
     pub async fn vote(&self, req: Request<VoteRequest>) -> Result<Response<VoteResponse>, Status> {
         let req = req.into_inner();
         let req = req.into_raft()?;
-        let resp = self.cm.vote_request(req).await?;
+        let resp = self.h.vote_request(req).await?;
         VoteResponse::from_raft(resp)
             .map(Response::new)
             .map_err(|e| e.into())
@@ -45,7 +43,7 @@ where
 #[tonic::async_trait]
 impl<CM> Raft for Handler<CM>
 where
-    CM: ConcensusRepo<RaftClient<Channel>>,
+    CM: RaftHandler,
 {
     /// AppendEntries implements the heartbeat and log replication algorithms from the raft protocol.
     async fn append_entries(

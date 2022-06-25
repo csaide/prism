@@ -5,20 +5,20 @@ use std::net::SocketAddr;
 
 use tonic::transport::{Channel, Server};
 
-use crate::raft::ConcensusRepo;
+use crate::raft::Repository;
 
 use super::{
     cluster, frontend, interceptor,
     raft::{self, RaftClient},
 };
 
-pub async fn serve<CM>(
+pub async fn serve<R>(
     addr: SocketAddr,
-    cm: CM,
+    cm: R,
     logger: slog::Logger,
 ) -> Result<(), tonic::transport::Error>
 where
-    CM: ConcensusRepo<RaftClient<Channel>>,
+    R: Repository<RaftClient<Channel>>,
 {
     let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
@@ -45,9 +45,9 @@ where
         .unwrap();
 
     let interceptor = interceptor::RaftInterceptor::new(&logger);
-    let raft_impl = raft::Handler::new(cm.clone());
-    let cluster_impl = cluster::Handler::new(cm.clone());
-    let frontend_impl = frontend::Handler::new(cm.clone());
+    let raft_impl = raft::Handler::new(cm.get_raft());
+    let cluster_impl = cluster::Handler::new(cm.get_cluster());
+    let frontend_impl = frontend::Handler::new(cm.get_frontend());
 
     info!(logger, "Listening for gRPC requests."; "addr" => addr.to_string());
     Server::builder()

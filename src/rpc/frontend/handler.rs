@@ -1,25 +1,24 @@
 // (c) Copyright 2022 Christian Saide[]
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use tonic::{transport::Channel, Request, Response, Status};
+use tonic::{Request, Response, Status};
 
-use crate::raft::ConcensusRepo;
-use crate::rpc::raft::RaftClient;
+use crate::raft::FrontendHandler;
 
 use super::{
     proto::frontend_server::Frontend, MutateRequest, MutateResponse, ReadRequest, ReadResponse,
     RegisterRequest, RegisterResponse,
 };
 
-pub struct Handler<CM> {
-    cm: CM,
+pub struct Handler<H> {
+    cm: H,
 }
 
-impl<CM> Handler<CM>
+impl<H> Handler<H>
 where
-    CM: ConcensusRepo<RaftClient<Channel>>,
+    H: FrontendHandler,
 {
-    pub fn new(cm: CM) -> Handler<CM> {
+    pub fn new(cm: H) -> Handler<H> {
         Handler { cm }
     }
 
@@ -58,9 +57,9 @@ where
 }
 
 #[tonic::async_trait]
-impl<CM> Frontend for Handler<CM>
+impl<H> Frontend for Handler<H>
 where
-    CM: ConcensusRepo<RaftClient<Channel>>,
+    H: FrontendHandler,
 {
     async fn mutate(
         &self,

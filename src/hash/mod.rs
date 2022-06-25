@@ -22,6 +22,11 @@ impl Command {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Query {
+    pub key: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct HashState {
     logger: slog::Logger,
@@ -67,5 +72,15 @@ impl StateMachine for HashState {
             }
         };
         Ok(Vec::default())
+    }
+
+    fn read(&self, query: Vec<u8>) -> crate::raft::Result<Vec<u8>> {
+        let query: Query = match bincode::deserialize(query.as_slice()) {
+            Ok(query) => query,
+            Err(e) => return Err(Error::Serialize(e.to_string())),
+        };
+
+        let state = self.state.lock().unwrap();
+        bincode::serialize(&state.get(&query.key)).map_err(|e| Error::Serialize(e.to_string()))
     }
 }

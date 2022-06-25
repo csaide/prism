@@ -7,25 +7,25 @@ use super::{
     proto::cluster_server::Cluster, AddRequest, AddResponse, ListRequest, ListResponse,
     RemoveRequest, RemoveResponse,
 };
-use crate::raft::ConcensusRepo;
+use crate::raft::ClusterHandler;
 use crate::rpc::raft::RaftClient;
 
-pub struct Handler<CM> {
-    cm: CM,
+pub struct Handler<H> {
+    ch: H,
 }
 
-impl<CM> Handler<CM>
+impl<H> Handler<H>
 where
-    CM: ConcensusRepo<RaftClient<Channel>>,
+    H: ClusterHandler<RaftClient<Channel>>,
 {
-    pub fn new(cm: CM) -> Handler<CM> {
-        Handler { cm }
+    pub fn new(ch: H) -> Handler<H> {
+        Handler { ch }
     }
 
     async fn add_impl(&self, req: Request<AddRequest>) -> Result<Response<AddResponse>, Status> {
         let req = req.into_inner();
         let req = req.into_raft().await?;
-        let resp = self.cm.add_server(req).await?;
+        let resp = self.ch.add_server(req).await?;
         AddResponse::from_raft(resp)
             .map(Response::new)
             .map_err(|e| e.into())
@@ -37,7 +37,7 @@ where
     ) -> Result<Response<RemoveResponse>, Status> {
         let req = req.into_inner();
         let req = req.into_raft()?;
-        let resp = self.cm.remove_server(req).await?;
+        let resp = self.ch.remove_server(req).await?;
         RemoveResponse::from_raft(resp)
             .map(Response::new)
             .map_err(|e| e.into())
@@ -46,7 +46,7 @@ where
     async fn list_impl(&self, req: Request<ListRequest>) -> Result<Response<ListResponse>, Status> {
         let req = req.into_inner();
         let req = req.into_raft()?;
-        let resp = self.cm.list_servers(req).await?;
+        let resp = self.ch.list_servers(req).await?;
         ListResponse::from_raft(resp)
             .map(Response::new)
             .map_err(|e| e.into())
@@ -56,7 +56,7 @@ where
 #[tonic::async_trait]
 impl<CM> Cluster for Handler<CM>
 where
-    CM: ConcensusRepo<RaftClient<Channel>>,
+    CM: ClusterHandler<RaftClient<Channel>>,
 {
     async fn add(&self, request: Request<AddRequest>) -> Result<Response<AddResponse>, Status> {
         self.add_impl(request).await

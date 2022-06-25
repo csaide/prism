@@ -9,6 +9,7 @@ use tokio::time::{timeout, Duration};
 
 use super::{Client, State};
 
+#[derive(Debug)]
 pub struct Follower<P> {
     logger: slog::Logger,
     state: Arc<State<P>>,

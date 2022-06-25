@@ -13,7 +13,10 @@ mod test_harness;
 mod workers;
 
 pub use cluster::*;
-pub use consensus::{ConcensusRepo, ConsensusMod};
+pub use consensus::{
+    Cluster, ClusterHandler, ConsensusMod, Frontend, FrontendHandler, Raft, RaftHandler, Repo,
+    Repository,
+};
 pub use error::{Error, Result};
 pub use models::*;
 pub use state::*;

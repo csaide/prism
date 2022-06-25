@@ -8,12 +8,13 @@ use tokio::time::{timeout, Duration};
 
 use super::{AppendEntriesRequest, AppendEntriesResponse, Client, Log, Result, State};
 
+#[derive(Debug)]
 pub struct Leader<P> {
     logger: slog::Logger,
     state: Arc<State<P>>,
     log: Arc<Log>,
     commit_tx: Arc<watch::Sender<()>>,
-    submit_rx: watch::Receiver<()>,
+    submit_rx: mpsc::Receiver<()>,
 }
 
 impl<P> Leader<P>
@@ -25,7 +26,7 @@ where
         state: Arc<State<P>>,
         log: Arc<Log>,
         commit_tx: Arc<watch::Sender<()>>,
-        submit_rx: watch::Receiver<()>,
+        submit_rx: mpsc::Receiver<()>,
     ) -> Leader<P> {
         Leader {
             logger: logger.clone(),
@@ -35,6 +36,7 @@ where
             submit_rx,
         }
     }
+
     pub async fn exec(&mut self) {
         let (last_log_idx, _) = match self.log.last_log_idx_and_term() {
             Ok(tuple) => tuple,
@@ -56,9 +58,9 @@ where
             drop(tx);
 
             self.handle_responses(saved_term, rx).await;
-            match timeout(duration, self.submit_rx.changed()).await {
-                Ok(resp) if resp.is_err() => return, // Channel was closed, this is an unexpected situation, abort.
-                _ => {}                              // Happy path we got a submit, fire append.
+            match timeout(duration, self.submit_rx.recv()).await {
+                Ok(resp) if resp.is_none() => return, // Channel was closed, this is an unexpected situation, abort.
+                _ => {}                               // Happy path we got a submit, fire append.
             }
         }
     }
