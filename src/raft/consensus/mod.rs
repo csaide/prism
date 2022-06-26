@@ -11,6 +11,9 @@ use tokio::sync::{
 
 use super::*;
 
+const OK: &str = "OK";
+const NOT_LEADER: &str = "NOT_LEADER";
+
 mod cluster;
 mod frontend;
 mod raft;

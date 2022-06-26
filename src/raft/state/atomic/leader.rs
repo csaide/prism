@@ -26,6 +26,10 @@ impl AtomicLeader {
     pub fn have_leader(&self) -> bool {
         self.inner.read().unwrap().is_some()
     }
+
+    pub fn leader(&self) -> Option<String> {
+        self.inner.read().unwrap().clone()
+    }
 }
 
 impl Default for AtomicLeader {

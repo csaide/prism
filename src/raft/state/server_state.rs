@@ -62,6 +62,10 @@ impl<P> State<P> {
     pub fn have_leader(&self) -> bool {
         self.volatile.leader.have_leader()
     }
+
+    pub fn current_leader(&self) -> Option<String> {
+        self.volatile.leader.leader()
+    }
 }
 
 /*

@@ -8,7 +8,7 @@ use tokio::sync::mpsc::Sender;
 use super::{
     Command, Entry, Error, Log, MutateStateRequest, MutateStateResponse, ReadStateRequest,
     ReadStateResponse, RegisterClientRequest, RegisterClientResponse, Registration, Result, State,
-    Watcher,
+    Watcher, NOT_LEADER, OK,
 };
 
 #[tonic::async_trait]
@@ -79,7 +79,11 @@ impl<P> Frontend<P> {
             return Err(Error::Dead);
         }
         if !self.state.is_leader() {
-            return Err(Error::InvalidMode);
+            return Ok(RegisterClientResponse {
+                client_id: Vec::default(),
+                leader_hint: self.state.current_leader().unwrap_or_default(),
+                status: NOT_LEADER.to_string(),
+            });
         }
 
         let term = self.state.get_current_term();
@@ -90,7 +94,7 @@ impl<P> Frontend<P> {
         Ok(RegisterClientResponse {
             client_id: idx.to_be_bytes().to_vec(),
             leader_hint: self.state.id.clone(),
-            status: "OK".to_string(),
+            status: OK.to_string(),
         })
     }
 
@@ -102,14 +106,18 @@ impl<P> Frontend<P> {
             return Err(Error::Dead);
         }
         if !self.state.is_leader() {
-            return Err(Error::InvalidMode);
+            return Ok(MutateStateResponse {
+                response: Vec::default(),
+                leader_hint: self.state.current_leader().unwrap_or_default(),
+                status: NOT_LEADER.to_string(),
+            });
         }
 
         let res = self.submit_command(mutate_request.command).await?;
         Ok(MutateStateResponse {
             leader_hint: self.state.id.clone(),
             response: res,
-            status: "OK".to_string(),
+            status: OK.to_string(),
         })
     }
 

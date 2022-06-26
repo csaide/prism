@@ -8,7 +8,7 @@ use tokio::sync::mpsc::Sender;
 use super::{
     AddServerRequest, AddServerResponse, Client, ClusterConfig, Entry, Error, ListServerRequest,
     ListServerResponse, Log, RemoveServerRequest, RemoveServerResponse, Result, State, Syncer,
-    Watcher,
+    Watcher, NOT_LEADER, OK,
 };
 
 #[tonic::async_trait]
@@ -78,7 +78,10 @@ where
             return Err(Error::Dead);
         }
         if !self.state.is_leader() {
-            return Err(Error::InvalidMode);
+            return Ok(AddServerResponse {
+                leader_hint: self.state.current_leader().unwrap_or_default(),
+                status: NOT_LEADER.to_string(),
+            });
         }
 
         Syncer::new(
@@ -101,7 +104,7 @@ where
 
         Ok(AddServerResponse {
             leader_hint: self.state.id.clone(),
-            status: "OK".to_string(),
+            status: OK.to_string(),
         })
     }
 
@@ -113,7 +116,10 @@ where
             return Err(Error::Dead);
         }
         if !self.state.is_leader() {
-            return Err(Error::InvalidMode);
+            return Ok(RemoveServerResponse {
+                leader_hint: self.state.current_leader().unwrap_or_default(),
+                status: NOT_LEADER.to_string(),
+            });
         }
 
         let cfg = {
@@ -126,7 +132,7 @@ where
 
         Ok(RemoveServerResponse {
             leader_hint: self.state.id.clone(),
-            status: "OK".to_string(),
+            status: OK.to_string(),
         })
     }
 
