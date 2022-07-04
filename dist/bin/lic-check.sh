@@ -11,7 +11,6 @@ function list_files_missing_lic() {
         -not -path './.git/*' \
         -not -path './.vscode/*' \
         -not -path './.github/*' \
-        -not -path './output/*' \
         -not -path './dist/docker/development/.bashrc' \
         -not -name .gitignore \
         -not -name .dockerignore \
@@ -24,6 +23,7 @@ function list_files_missing_lic() {
         -not -name '*.toml' \
         -not -name '*.pem' \
         -not -name '*.srl' \
+        -not -name '*.lcov' \
         -type f | xargs grep -L 'SPDX-License-Identifier: GPL-3.0-or-later'
 }
 
@@ -39,7 +39,6 @@ function list_files_missing_copy() {
         -not -path './.git/*' \
         -not -path './.vscode/*' \
         -not -path './.github/*' \
-        -not -path './output/*' \
         -not -path './dist/docker/development/.bashrc' \
         -not -name .gitignore \
         -not -name .dockerignore \
@@ -51,6 +50,7 @@ function list_files_missing_copy() {
         -not -name '*.toml' \
         -not -name '*.pem' \
         -not -name '*.srl' \
+        -not -name '*.lcov' \
         -type f | xargs grep -L -E '(&copy;|\(c\)) Copyright 2022 Christian Saide'
 }
 

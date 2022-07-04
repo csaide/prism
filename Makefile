@@ -65,7 +65,7 @@ docs:
 # Ensure we compile each of the targets properly using the correct mode.
 compile-bin.%:
 	@bash ./dist/bin/print.sh "Building target: '$*' mode: '$(BUILD)'"
-	@mkdir -p ./output/$(BUILD)
+	@mkdir -p ./target/output/$(BUILD)
 	@RUSTFLAGS="-Ctarget-feature=+crt-static" cargo build $(build_$(BUILD)) --target $(target_$*)
 	@if [ "$(BUILD)" = "release" ]; then bash ./dist/bin/strip-compress.sh "$(BUILD)" "$(target_$*)" "$(strip_$*)"; fi
 	@bash dist/bin/package.sh "$(BUILD)" "$(target_$*)" "$*"
@@ -111,7 +111,7 @@ promote:
 # Source code validation, formatting, linting.
 ###
 
-.PHONY: fmt lint units bench coverage coverage-ci license check
+.PHONY: fmt lint units bench coverage coverage-ci coverage-html license check
 
 fmt:
 	@bash ./dist/bin/print.sh "Formatting Code"
@@ -132,6 +132,10 @@ coverage:
 
 coverage-ci:
 	@bash ./dist/bin/print.sh "Running tests with coverage"
+	@cargo +nightly llvm-cov --hide-instantiations --lcov --output-path coverage.lcov
+
+coverage-html:
+	@bash ./dist/bin/print.sh "Running tests with coverage"
 	@cargo +nightly llvm-cov --hide-instantiations --html
 
 license:
@@ -148,4 +152,4 @@ check: fmt lint units license
 
 clean:
 	@bash ./dist/bin/print.sh "Cleaning"
-	@rm -rf target/ output/
+	@rm -rf target/
