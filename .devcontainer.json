@@ -28,7 +28,9 @@
         "zxh404.vscode-proto3",
         "bungcip.better-toml",
         "vadimcn.vscode-lldb",
-        "mutantdino.resourcemonitor"
+        "mutantdino.resourcemonitor",
+        "ms-vscode.makefile-tools",
+        "eamodio.gitlens"
     ],
     "settings": {
         "rust-analyzer.inlayHints.enable": false,

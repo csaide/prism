@@ -16,16 +16,17 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/*
 
 # Add our rust utils and nightly toolchain.
-RUN rustup component add rust-std \
+RUN rustup update \
+    && rustup toolchain install nightly-x86_64-unknown-linux-gnu \
+    && rustup target add x86_64-unknown-linux-gnu \
+    && rustup target add aarch64-unknown-linux-gnu \
+    && rustup component add rust-std \
     && rustup component add rustfmt \
     && rustup component add clippy \
     && rustup component add rust-src \
     && rustup component add llvm-tools-preview \
-    && rustup target add x86_64-unknown-linux-gnu \
-    && rustup target add aarch64-unknown-linux-gnu \
-    && rustup toolchain install nightly-x86_64-unknown-linux-gnu \
-    && cargo install cargo-tarpaulin \
-    && rustup update
+    && rustup component add llvm-tools-preview --toolchain nightly-x86_64-unknown-linux-gnu \
+    && cargo install cargo-llvm-cov
 
 # Install rust-analyzer
 RUN curl -L https://github.com/rust-analyzer/rust-analyzer/releases/latest/download/rust-analyzer-linux -o /usr/bin/rust-analyzer \

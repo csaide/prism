@@ -11,3 +11,15 @@ pub struct VolatileState {
     pub last_applied_idx: AtomicIndex,
     pub commit_idx: AtomicIndex,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_volatile_state() {
+        let state = VolatileState::default();
+        let state_str = format!("{:?}", state);
+        assert_eq!(state_str, "VolatileState { mode: AtomicMode { inner: RwLock { data: Follower, poisoned: false, .. } }, leader: AtomicLeader { inner: RwLock { data: None, poisoned: false, .. } }, last_cluster_config_idx: AtomicIndex { inner: RwLock { data: 0, poisoned: false, .. } }, last_applied_idx: AtomicIndex { inner: RwLock { data: 0, poisoned: false, .. } }, commit_idx: AtomicIndex { inner: RwLock { data: 0, poisoned: false, .. } } }");
+    }
+}

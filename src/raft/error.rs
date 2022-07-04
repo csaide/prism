@@ -80,3 +80,33 @@ impl From<Error> for Status {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+
+    use tonic::{Code, Status};
+
+    #[test]
+    fn test_derived() {
+        let err = super::Error::Dead;
+        let err_str = format!("{:?}", err);
+        assert_eq!(err_str, "Dead");
+        let source = err.source();
+        assert!(source.is_none());
+    }
+
+    #[test]
+    fn test_from() {
+        let err = super::Error::Dead;
+        let status = Status::from(err);
+        assert_eq!(status.code(), Code::Internal);
+        assert_eq!(status.message(), "server has transitioned to dead");
+
+        let status = Status::new(Code::Aborted, "hello");
+        let err = super::Error::Rpc(status);
+        let source = Status::from(err);
+        assert_eq!(source.code(), Code::Aborted);
+        assert_eq!(source.message(), "hello");
+    }
+}

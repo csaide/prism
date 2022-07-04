@@ -34,13 +34,37 @@ impl AtomicMode {
     }
 
     pub fn set(&self, mode: Mode) {
-        let mut val = self.inner.write().unwrap();
-        *val = mode
+        *self.inner.write().unwrap() = mode
     }
 }
 
 impl Default for AtomicMode {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+
+    #[rstest]
+    #[case::candidate(Mode::Candidate)]
+    #[case::dead(Mode::Dead)]
+    #[case::follower(Mode::Follower)]
+    #[case::leader(Mode::Leader)]
+    fn test_atomic_mode(#[case] input: Mode) {
+        let mode = AtomicMode::default();
+        assert!(mode.is_follower());
+
+        mode.set(input.clone());
+        match input {
+            Mode::Candidate => assert!(mode.is_candidate()),
+            Mode::Dead => assert!(mode.is_dead()),
+            Mode::Follower => assert!(mode.is_follower()),
+            Mode::Leader => assert!(mode.is_leader()),
+        }
     }
 }

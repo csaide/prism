@@ -7,7 +7,7 @@ use super::Level;
 // extern usings
 use structopt::StructOpt;
 
-#[derive(Debug, Clone, StructOpt)]
+#[derive(Debug, Clone, StructOpt, PartialEq, PartialOrd)]
 /// Prism logging configuration.
 pub struct Config {
     #[structopt(
@@ -33,4 +33,23 @@ pub struct Config {
     )]
     /// Define whether or not to log in json format.
     pub json: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsString;
+
+    use super::*;
+
+    #[test]
+    fn test_config() {
+        let cfg = Config::from_iter_safe(vec![OsString::from("test"), OsString::from("-j")])
+            .expect("Shouldn't have errored.");
+        let cloned = cfg.clone();
+        assert_eq!(cloned, cfg);
+        assert!(cloned >= cfg);
+        assert!(cloned <= cfg);
+        assert!(cloned == cfg);
+        assert_eq!(format!("{:?}", cloned), format!("{:?}", cfg))
+    }
 }

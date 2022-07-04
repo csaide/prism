@@ -43,7 +43,6 @@ impl Interceptor for RaftInterceptor {
 }
 
 #[cfg(test)]
-#[cfg(not(tarpaulin_include))]
 mod tests {
     use tonic::metadata::MetadataValue;
 
@@ -52,7 +51,10 @@ mod tests {
     #[test]
     fn test_interceptor() {
         let logger = slog::Logger::root(slog::Discard {}, o!());
-        let mut interceptor = RaftInterceptor::new(&logger);
+        let original = RaftInterceptor::new(&logger);
+        let mut interceptor = original.clone();
+
+        assert_eq!(format!("{:?}", interceptor), format!("{:?}", original));
 
         let req = Request::new(());
         let res = interceptor.call(req);

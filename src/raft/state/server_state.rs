@@ -174,3 +174,109 @@ where
         self.set_mode(Mode::Dead);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use crate::raft::MockClient;
+
+    use super::*;
+
+    fn test_state() -> State<MockClient> {
+        let db = sled::Config::new()
+            .temporary(true)
+            .open()
+            .expect("Failed to open temporary database.");
+        State::<MockClient>::new(String::from("hello"), HashMap::default(), &db)
+            .expect("Failed to create new state object.")
+    }
+
+    #[test]
+    fn test_transitions() {
+        let state = test_state();
+
+        state.transition_dead();
+        assert!(state.is_dead());
+
+        state.transition_leader(1);
+        assert!(state.is_leader());
+        assert!(state
+            .peers
+            .lock()
+            .iter()
+            .all(|(_, peer)| peer.match_idx == 0 && peer.next_idx == 2));
+
+        state.set_current_term(1);
+        let term = state.transition_candidate();
+        assert!(state.is_candidate());
+        let voted_for = state
+            .get_voted_for()
+            .expect("Should have set voted for in transition_candidate");
+        assert_eq!(voted_for, "hello");
+        assert_eq!(term, 2);
+        assert!(state.matches_term(2));
+
+        state.transition_follower(None);
+        assert!(state.is_follower());
+        assert!(state.matches_term(2));
+        assert!(state.get_voted_for().is_none());
+
+        state.transition_follower(Some(3));
+        assert!(state.is_follower());
+        assert!(state.matches_term(3));
+        assert!(state.get_voted_for().is_none());
+    }
+
+    #[test]
+    fn test_index_handling() {
+        let state = test_state();
+
+        assert_eq!(state.get_commit_idx(), 0);
+        state.set_commit_idx(1);
+        assert_eq!(state.get_commit_idx(), 1);
+
+        assert_eq!(state.get_last_applied_idx(), 0);
+        state.set_last_applied_idx(1);
+        assert_eq!(state.get_last_applied_idx(), 1);
+
+        assert!(state.matches_last_cluster_config_idx(0));
+        state.set_last_cluster_config_idx(1);
+        assert!(state.matches_last_cluster_config_idx(1));
+    }
+
+    #[test]
+    fn test_leader_tracking() {
+        let state = test_state();
+
+        assert!(!state.have_leader());
+        assert!(matches!(state.current_leader(), None));
+
+        state.saw_leader(String::from("leader"));
+        assert!(state.have_leader());
+        let leader = state
+            .current_leader()
+            .expect("Should have been a value got None");
+        assert_eq!(leader, "leader");
+
+        state.lost_leader();
+        assert!(!state.have_leader());
+        assert!(matches!(state.current_leader(), None));
+    }
+
+    #[rstest]
+    #[case::leader(Mode::Leader)]
+    #[case::candidate(Mode::Candidate)]
+    #[case::follower(Mode::Follower)]
+    #[case::dead(Mode::Dead)]
+    fn test_mode_handling(#[case] mode: Mode) {
+        let state = test_state();
+        state.set_mode(mode.clone());
+        match mode {
+            Mode::Leader => assert!(state.is_leader()),
+            Mode::Candidate => assert!(state.is_candidate()),
+            Mode::Follower => assert!(state.is_follower()),
+            Mode::Dead => assert!(state.is_dead()),
+        }
+    }
+}

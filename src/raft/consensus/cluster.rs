@@ -51,12 +51,6 @@ where
     }
 
     async fn submit_cluster_config(&self, cfg: ClusterConfig) -> Result<()> {
-        if self.state.is_dead() {
-            return Err(Error::Dead);
-        }
-        if !self.state.is_leader() {
-            return Err(Error::InvalidMode);
-        }
         let last_cluster_config_idx = self.log.append(Entry::ClusterConfig(cfg))?;
 
         self.state
@@ -165,5 +159,226 @@ where
     }
     async fn list_servers(&self, list_request: ListServerRequest) -> Result<ListServerResponse> {
         self.list_members(list_request).await
+    }
+}
+
+#[cfg(test)]
+pub mod mock {
+    use mockall::mock;
+
+    mock! {
+        #[derive(Debug)]
+        pub ClusterHandler<P> {}
+
+        #[tonic::async_trait]
+        impl<P> super::ClusterHandler<P> for ClusterHandler<P>
+        where
+            P: super::Client + Send + Clone + 'static,
+        {
+            async fn add_server(&self, add_request: super::AddServerRequest<P>) -> super::Result<super::AddServerResponse>;
+            async fn remove_server(
+                &self,
+                remove_request: super::RemoveServerRequest,
+            ) -> super::Result<super::RemoveServerResponse>;
+            async fn list_servers(&self, list_request: super::ListServerRequest) -> super::Result<super::ListServerResponse>;
+        }
+
+        impl<P> Clone for ClusterHandler<P>
+        where
+            P: Clone
+        {
+            fn clone(&self) -> Self;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, time::Duration};
+
+    use rstest::rstest;
+    use tokio::sync::mpsc;
+    use tokio_test::block_on as wait;
+
+    use crate::{
+        log,
+        raft::{
+            cluster::{get_lock, MockClient, MTX},
+            AppendEntriesResponse, Mode, Peer,
+        },
+    };
+
+    use super::*;
+
+    fn mock_client_append_factory() -> MockClient {
+        let mut mock_peer = MockClient::new();
+        mock_peer
+            .expect_clone()
+            .returning(mock_client_append_factory);
+        mock_peer.expect_append().once().returning(|_| {
+            Ok(AppendEntriesResponse {
+                term: 1,
+                success: true,
+            })
+        });
+        mock_peer
+    }
+
+    #[rstest]
+    #[case::happy_path(
+        Mode::Leader,
+        vec![
+            (AddServerRequest {
+                id: String::from("leader"),
+                peer: Peer::new(String::from("leader")),
+                replica: false,
+            }, Ok(AddServerResponse {
+                leader_hint: String::from("leader"),
+                status: OK.to_string(),
+            })),
+            (AddServerRequest {
+                id: String::from("follower"),
+                peer: Peer::new(String::from("follower")),
+                replica: false,
+            }, Ok(AddServerResponse {
+                leader_hint: String::from("leader"),
+                status: OK.to_string(),
+            }))
+        ],
+        vec![
+            (RemoveServerRequest {
+                id: String::from("follower"),
+            }, Ok(RemoveServerResponse {
+                leader_hint: String::from("leader"),
+                status: OK.to_string(),
+            }))
+        ],
+        Some(ListServerResponse{
+            leader: String::from("leader"),
+            replicas: Vec::default(),
+            voters: Vec::default(),
+            term: 1,
+        }),
+        2
+    )]
+    #[case::dead(
+        Mode::Dead,
+        vec![
+            (AddServerRequest {
+                id: String::from("leader"),
+                peer: Peer::new(String::from("leader")),
+                replica: false,
+            }, Err(Error::Dead))
+        ],
+        vec![
+            (RemoveServerRequest {
+                id: String::from("follower"),
+            },  Err(Error::Dead))
+        ],
+        None,
+        0,
+    )]
+    #[case::follower(
+        Mode::Follower,
+        vec![
+            (AddServerRequest {
+                id: String::from("leader"),
+                peer: Peer::new(String::from("leader")),
+                replica: false,
+            }, Ok(AddServerResponse{
+                leader_hint: String::from("leader"),
+                status: NOT_LEADER.to_string(),
+            }))
+        ],
+        vec![
+            (RemoveServerRequest {
+                id: String::from("follower"),
+            }, Ok(RemoveServerResponse {
+                leader_hint: String::from("leader"),
+                status: NOT_LEADER.to_string(),
+            }))
+        ],
+        None,
+        0,
+    )]
+    fn test_cluster(
+        #[case] mode: Mode,
+        #[case] add_reqs: Vec<(AddServerRequest<MockClient>, Result<AddServerResponse>)>,
+        #[case] rm_reqs: Vec<(RemoveServerRequest, Result<RemoveServerResponse>)>,
+        #[case] expected_list_resp: Option<ListServerResponse>,
+        #[case] expected_connects: usize,
+    ) {
+        let _m = get_lock(&MTX);
+
+        let ctx = MockClient::connect_context();
+        ctx.expect()
+            .times(expected_connects)
+            .returning(|_| Ok(mock_client_append_factory()));
+
+        let logger = log::noop();
+        let id = String::from("leader");
+        let db = sled::Config::new()
+            .temporary(true)
+            .open()
+            .expect("Failed to open temp database.");
+        let state = Arc::new(
+            State::<MockClient>::new(id.clone(), HashMap::default(), &db)
+                .expect("Failed to create new State object."),
+        );
+        state.set_mode(mode);
+
+        let log = Arc::new(Log::new(&db).expect("Failed to create new persistent Log."));
+        let watcher = Arc::new(Watcher::default());
+        let (tx, _rx) = mpsc::channel(10);
+        let handler = Cluster::new(&logger, state, log, watcher.clone(), tx);
+
+        let mut idx: u128 = 1;
+        for add_req in add_reqs {
+            let watch = watcher.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(10));
+                watch.cluster_config_applied(idx);
+            });
+            let resp = wait(handler.add_server(add_req.0));
+            let expected = add_req.1;
+            if expected.is_ok() {
+                assert!(resp.is_ok());
+                let resp = resp.unwrap();
+                let expected = expected.unwrap();
+                assert_eq!(resp.status, expected.status);
+            } else {
+                assert!(resp.is_err());
+            }
+
+            idx += 1;
+        }
+
+        for rm_req in rm_reqs {
+            let watch = watcher.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(10));
+                watch.cluster_config_applied(idx);
+            });
+            let resp = wait(handler.remove_server(rm_req.0));
+            let expected = rm_req.1;
+            if expected.is_ok() {
+                assert!(resp.is_ok());
+                let resp = resp.unwrap();
+                let expected = expected.unwrap();
+                assert_eq!(resp.status, expected.status);
+            } else {
+                assert!(resp.is_err());
+            }
+            idx += 1;
+        }
+
+        let actual_list_resp = wait(handler.list_servers(ListServerRequest {}));
+        assert!(actual_list_resp.is_ok() == expected_list_resp.is_some());
+        if actual_list_resp.is_ok() {
+            let actual_list_resp = actual_list_resp.unwrap();
+            let expected_list_resp = expected_list_resp.unwrap();
+
+            assert_eq!(actual_list_resp.term, expected_list_resp.term);
+        }
     }
 }

@@ -6,7 +6,7 @@ use super::{
     Result,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct Peer<C> {
     client: Option<C>,
     pub id: String,
@@ -55,5 +55,103 @@ where
             self.client = Some(client);
         }
         self.client.as_mut().unwrap().append(req).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use mockall::predicate::eq;
+    use tokio_test::block_on as wait;
+
+    use crate::raft::cluster::client::mock::{get_lock, MockClient, MTX};
+
+    use super::*;
+
+    fn mock_client_vote_factory() -> MockClient {
+        let mut mock_peer = MockClient::new();
+        mock_peer.expect_clone().returning(mock_client_vote_factory);
+        mock_peer.expect_vote().once().returning(|_| {
+            Ok(RequestVoteResponse {
+                term: 1,
+                vote_granted: true,
+            })
+        });
+        mock_peer
+    }
+
+    fn mock_client_append_factory() -> MockClient {
+        let mut mock_peer = MockClient::new();
+        mock_peer
+            .expect_clone()
+            .returning(mock_client_append_factory);
+        mock_peer.expect_append().once().returning(|_| {
+            Ok(AppendEntriesResponse {
+                term: 1,
+                success: true,
+            })
+        });
+        mock_peer
+    }
+
+    #[test]
+    fn test_peer_vote() {
+        let _m = get_lock(&MTX);
+
+        let addr = String::from("grpc://127.0.0.1:8080");
+        let ctx = MockClient::connect_context();
+        ctx.expect()
+            .once()
+            .with(eq(addr.clone()))
+            .returning(|_| Ok(mock_client_vote_factory()));
+
+        let mut peer = Peer::<MockClient>::new(addr.clone());
+
+        let last_log_idx = 1;
+        peer.reset(last_log_idx);
+
+        assert_eq!(peer.next_idx, last_log_idx + 1);
+        assert_eq!(peer.match_idx, 0);
+
+        let resp = wait(peer.vote(RequestVoteRequest {
+            term: 1,
+            candidate_id: addr.clone(),
+            last_log_idx: 1,
+            last_log_term: 1,
+        }));
+        assert!(resp.is_ok());
+        let resp = resp.unwrap();
+        assert!(resp.vote_granted);
+    }
+
+    #[test]
+    fn test_peer_append() {
+        let _m = get_lock(&MTX);
+
+        let addr = String::from("grpc://127.0.0.1:8081");
+        let ctx = MockClient::connect_context();
+        ctx.expect()
+            .once()
+            .with(eq(addr.clone()))
+            .returning(|_| Ok(mock_client_append_factory()));
+
+        let mut peer = Peer::<MockClient>::new(addr.clone());
+
+        let last_log_idx = 1;
+        peer.reset(last_log_idx);
+
+        assert_eq!(peer.next_idx, last_log_idx + 1);
+        assert_eq!(peer.match_idx, 0);
+
+        let resp = wait(peer.append(AppendEntriesRequest {
+            term: 1,
+            entries: Vec::default(),
+            leader_commit_idx: 1,
+            leader_id: addr.clone(),
+            prev_log_idx: 1,
+            prev_log_term: 1,
+        }));
+        assert!(resp.is_ok());
+        let resp = resp.unwrap();
+        assert!(resp.success);
     }
 }

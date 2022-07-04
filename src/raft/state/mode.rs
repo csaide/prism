@@ -8,3 +8,21 @@ pub enum Mode {
     Candidate,
     Dead,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mode() {
+        let mode = Mode::Leader;
+        let mode_str = format!("{:?}", mode);
+        assert_eq!(mode_str, "Leader");
+
+        let cloned = mode.clone();
+        assert_eq!(cloned, mode);
+
+        let dead = Mode::Dead;
+        assert!(dead > mode);
+    }
+}

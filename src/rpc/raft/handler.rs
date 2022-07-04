@@ -23,18 +23,20 @@ where
         req: Request<AppendRequest>,
     ) -> Result<Response<AppendResponse>, Status> {
         let req = req.into_inner();
-        let req = req.into_raft()?;
-        let resp = self.h.append_entries(req).await?;
-        AppendResponse::from_raft(resp)
+        self.h
+            .append_entries(req.into())
+            .await
+            .map(AppendResponse::from)
             .map(Response::new)
             .map_err(|e| e.into())
     }
 
     pub async fn vote(&self, req: Request<VoteRequest>) -> Result<Response<VoteResponse>, Status> {
         let req = req.into_inner();
-        let req = req.into_raft()?;
-        let resp = self.h.vote_request(req).await?;
-        VoteResponse::from_raft(resp)
+        self.h
+            .vote_request(req.into())
+            .await
+            .map(VoteResponse::from)
             .map(Response::new)
             .map_err(|e| e.into())
     }
@@ -59,5 +61,82 @@ where
         request: Request<VoteRequest>,
     ) -> Result<Response<VoteResponse>, Status> {
         self.vote(request).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use mockall::predicate::eq;
+    use tokio_test::block_on as wait;
+    use tonic::transport::Channel;
+
+    use crate::raft::{
+        AppendEntriesRequest, AppendEntriesResponse, MockRaftHandler, RequestVoteRequest,
+        RequestVoteResponse,
+    };
+    use crate::rpc::raft::RaftClient;
+
+    use super::*;
+
+    #[test]
+    fn test_append() {
+        let mut mock = MockRaftHandler::<RaftClient<Channel>>::default();
+
+        let inner = AppendRequest {
+            leader_id: String::from("leader"),
+            entries: Vec::default(),
+            leader_commit_idx: 1u128.to_be_bytes().to_vec(),
+            prev_log_idx: 1u128.to_be_bytes().to_vec(),
+            prev_log_term: 1u128.to_be_bytes().to_vec(),
+            term: 1u128.to_be_bytes().to_vec(),
+        };
+
+        mock.expect_append_entries()
+            .with(eq(AppendEntriesRequest::from(inner.clone())))
+            .once()
+            .returning(|req| {
+                Ok(AppendEntriesResponse {
+                    success: true,
+                    term: req.term,
+                })
+            });
+
+        let srv = Handler::new(mock);
+
+        let req = Request::new(inner);
+        let result = wait(srv.append_entries(req)).expect("should not have returned an error.");
+        let result = result.into_inner();
+        assert!(result.success);
+        assert_eq!(result.term, 1u128.to_be_bytes().to_vec());
+    }
+
+    #[test]
+    fn test_vote() {
+        let mut mock = MockRaftHandler::<RaftClient<Channel>>::default();
+
+        let inner = VoteRequest {
+            candidate_id: String::from("leader"),
+            last_log_idx: 1u128.to_be_bytes().to_vec(),
+            last_log_term: 1u128.to_be_bytes().to_vec(),
+            term: 1u128.to_be_bytes().to_vec(),
+        };
+
+        mock.expect_vote_request()
+            .with(eq(RequestVoteRequest::from(inner.clone())))
+            .once()
+            .returning(|req| {
+                Ok(RequestVoteResponse {
+                    term: req.term,
+                    vote_granted: true,
+                })
+            });
+
+        let srv = Handler::new(mock);
+
+        let req = Request::new(inner);
+        let result = wait(srv.request_vote(req)).expect("should not have returned an error.");
+        let result = result.into_inner();
+        assert!(result.vote_granted);
+        assert_eq!(result.term, 1u128.to_be_bytes().to_vec())
     }
 }

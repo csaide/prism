@@ -65,7 +65,14 @@ where
                         let result = self.state_machine.apply(cmd);
                         self.watcher.command_applied(idx, result)
                     }
-                    _ => continue,
+                    ClusterConfig(_) => {
+                        info!(self.logger, "Commited cluster config."; "idx" => idx);
+                        self.watcher.cluster_config_applied(idx);
+                    }
+                    Registration(_) => {
+                        info!(self.logger, "Commited client registration."; "idx" => idx);
+                        self.watcher.registration_applied(idx);
+                    }
                 }
             }
 

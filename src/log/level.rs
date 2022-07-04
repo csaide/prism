@@ -7,7 +7,7 @@ use super::error::{Error, Result};
 // Standard usings
 use std::str::FromStr;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 /// Set the verbosity of logs printed to the defined handler.
 pub enum Level {
     /// Only print critical errors.
@@ -29,7 +29,7 @@ impl FromStr for Level {
     /// the supplied static &str is not defined, an Error::InvalidLevel is returned.
     ///
     /// ```
-    /// use std::str::FromStr;
+    /// # use std::str::FromStr;
     /// let x = libprism::log::Level::from_str("critical");
     /// assert_eq!(x.is_ok(), true);
     /// assert_eq!(x.unwrap(), libprism::log::Level::Crit);
@@ -53,7 +53,6 @@ impl Level {
     /// of log levels for consumption.
     ///
     /// ```
-    /// use std::str::FromStr;
     /// let x = libprism::log::Level::Crit;
     /// assert_eq!(x.to_slog(), slog::Level::Critical);
     /// ```
@@ -69,40 +68,51 @@ impl Level {
 }
 
 #[cfg(test)]
-#[cfg(not(tarpaulin_include))]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
     #[test]
-    fn test_from_str() {
-        assert_eq!(Level::Crit, Level::from_str("critical").unwrap());
-        assert_eq!(Level::Error, Level::from_str("error").unwrap());
-        assert_eq!(Level::Warn, Level::from_str("warn").unwrap());
-        assert_eq!(Level::Info, Level::from_str("info").unwrap());
-        assert_eq!(Level::Debug, Level::from_str("debug").unwrap());
+    fn test_derived() {
+        let level = Level::Info;
+        let level_str = format!("{:?}", level);
+        assert_eq!(level_str, "Info");
+        let cloned = level.clone();
+        assert_eq!(cloned, level);
+    }
 
-        let res = Level::from_str("nope");
-        assert_eq!(true, res.is_err());
-        let err = res.unwrap_err();
+    #[rstest]
+    #[case::crit("critical", Ok(Level::Crit))]
+    #[case::error("error", Ok(Level::Error))]
+    #[case::warn("warn", Ok(Level::Warn))]
+    #[case::info("info", Ok(Level::Info))]
+    #[case::debug("debug", Ok(Level::Debug))]
+    #[case::fail("fail", Err(Error::InvalidLevel { level: String::from("fail") }))]
+    fn test_from_str(#[case] input: &str, #[case] expected: Result<Level>) {
+        let result = Level::from_str(input);
+        if expected.is_err() {
+            assert!(result.is_err());
 
-        match err {
-            Error::InvalidLevel { ref level } => {
-                assert_eq!(&String::from("nope"), level);
+            let result = result.unwrap_err();
+            let expected_level = String::from(input);
+            match result {
+                Error::InvalidLevel { level } => assert_eq!(level, expected_level),
             }
+        } else {
+            assert!(result.is_ok());
+            assert_eq!(expected.unwrap(), result.unwrap())
         }
     }
 
-    #[test]
-    fn test_to_slog() {
-        let level = Level::Crit;
-        assert_eq!(slog::Level::Critical, level.to_slog());
-        let level = Level::Error;
-        assert_eq!(slog::Level::Error, level.to_slog());
-        let level = Level::Warn;
-        assert_eq!(slog::Level::Warning, level.to_slog());
-        let level = Level::Info;
-        assert_eq!(slog::Level::Info, level.to_slog());
-        let level = Level::Debug;
-        assert_eq!(slog::Level::Debug, level.to_slog());
+    #[rstest]
+    #[case::crit(Level::Crit, slog::Level::Critical)]
+    #[case::error(Level::Error, slog::Level::Error)]
+    #[case::warn(Level::Warn, slog::Level::Warning)]
+    #[case::info(Level::Info, slog::Level::Info)]
+    #[case::debug(Level::Debug, slog::Level::Debug)]
+    fn test_to_slog(#[case] input: Level, #[case] expected: slog::Level) {
+        let actual = input.to_slog();
+        assert_eq!(expected, actual)
     }
 }

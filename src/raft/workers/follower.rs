@@ -56,12 +56,11 @@ where
 }
 
 #[cfg(test)]
-#[cfg(not(tarpaulin_include))]
 mod tests {
     use std::collections::HashMap;
 
     use crate::log;
-    use crate::raft::test_harness::MockPeer;
+    use crate::raft::MockClient;
 
     use super::*;
 
@@ -75,7 +74,7 @@ mod tests {
             .open()
             .expect("Failed to open database.");
         let state = Arc::new(
-            State::<MockPeer>::new(String::from("id"), HashMap::default(), &db)
+            State::<MockClient>::new(String::from("id"), HashMap::default(), &db)
                 .expect("Failed to create shared state."),
         );
         let mut follower = Follower::new(&logger, state, heartbeat_rx);

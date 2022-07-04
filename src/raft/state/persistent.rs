@@ -75,3 +75,59 @@ impl PersistentState {
             .unwrap_or(Ok(1))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_voted_for() {
+        let db = sled::Config::new()
+            .temporary(true)
+            .open()
+            .expect("Failed to open temp database.");
+        let state = PersistentState::new(&db).expect("Failed to open persistent state.");
+
+        let voted_for = state.get_voted_for().expect("Failed to get voted_for.");
+        assert!(voted_for.is_none());
+
+        let name = String::from("hello");
+        state
+            .set_voted_for(Some(name.clone()))
+            .expect("Failed to set voted_for.");
+
+        let voted_for = state.get_voted_for().expect("Failed to get voted_for.");
+        assert!(voted_for.is_some());
+        let voted_for = voted_for.unwrap();
+        assert_eq!(voted_for, name);
+    }
+
+    #[test]
+    fn test_current_term() {
+        let db = sled::Config::new()
+            .temporary(true)
+            .open()
+            .expect("Failed to open temp database.");
+        let state = PersistentState::new(&db).expect("Failed to open persistent state.");
+
+        let current_term = state
+            .get_current_term()
+            .expect("Failed to retrieve current term.");
+        assert_eq!(current_term, 1);
+
+        state
+            .set_current_term(2)
+            .expect("Failed to set current term.");
+
+        let current_term = state
+            .get_current_term()
+            .expect("Failed to retrieve current term.");
+        assert_eq!(current_term, 2);
+
+        let new_term = state
+            .incr_current_term()
+            .expect("Failed to increment term.");
+        assert_eq!(new_term, 3);
+        assert!(state.matches_term(3).expect("Failed to match term."));
+    }
+}

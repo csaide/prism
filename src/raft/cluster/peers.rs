@@ -100,7 +100,7 @@ where
 
     pub fn idx_matches(&self, idx: u128) -> bool {
         let mut matches = 1;
-        for (_, peer) in self.voters.iter().filter(|(id, _)| **id != self.id) {
+        for (_, peer) in self.voters.iter().filter(|(id, _)| *id != &self.id) {
             if peer.match_idx >= idx {
                 matches += 1;
             }
@@ -157,5 +157,89 @@ where
         *self.voters = voters;
         *self.replicas = replicas;
         Ok(found_self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::raft::cluster::client::mock::MockClient;
+
+    use super::*;
+
+    #[test]
+    fn test_new() {
+        let id = String::from("grpc://127.0.0.1:8080");
+        let peers = Peers::<MockClient>::new(id.clone());
+        assert!(peers.lock().is_empty());
+    }
+
+    #[test]
+    fn test_peers() {
+        let id = String::from("grpc://127.0.0.1:8080");
+        let peers = Peers::<MockClient>::new(id.clone());
+
+        let mut locked = peers.lock();
+        assert_eq!(0, locked.len());
+        assert!(locked.is_empty());
+
+        let peer_id = String::from("grpc://127.0.0.1:8081");
+        let peer = Peer::new(peer_id.clone());
+        locked.append(peer_id.clone(), peer);
+        assert!(locked.contains(&peer_id));
+
+        let actual = locked.get(&peer_id);
+        assert!(actual.is_some());
+
+        let actual = locked.get_mut(&peer_id);
+        assert!(actual.is_some());
+        let actual = actual.unwrap();
+        actual.reset(1);
+
+        locked.remove(&peer_id);
+        assert!(!locked.contains(&peer_id));
+        assert!(locked.get(&peer_id).is_none());
+    }
+
+    #[test]
+    fn test_peers_cluster_mgmt() {
+        let id = String::from("grpc://127.0.0.1:8081");
+        let peers = Peers::<MockClient>::new(id.clone());
+
+        let input_cluster_cfg = ClusterConfig {
+            term: 1,
+            replicas: vec![
+                String::from("grpc://127.0.0.1:8081"),
+                String::from("grpc://127.0.0.1:8084"),
+                String::from("grpc://127.0.0.1:8085"),
+            ],
+            voters: vec![
+                String::from("grpc://127.0.0.1:8081"),
+                String::from("grpc://127.0.0.1:8082"),
+                String::from("grpc://127.0.0.1:8083"),
+            ],
+        };
+
+        let mut locked = peers.lock();
+        let found_self = locked
+            .update(input_cluster_cfg)
+            .expect("Failed to update Peers with new cluster config.");
+        assert!(found_self);
+
+        locked.reset(1);
+        assert!(locked.idx_matches(0));
+        assert!(!locked.idx_matches(1));
+
+        let list_resp = locked.to_list_response(1);
+        assert_eq!(1, list_resp.term);
+        assert_eq!(3, list_resp.voters.len());
+        assert_eq!(3, list_resp.replicas.len());
+        assert_eq!(id, list_resp.leader);
+
+        let actual_cluster_cfg = locked.to_cluster_config(1);
+        assert_eq!(1, actual_cluster_cfg.term);
+        assert_eq!(3, actual_cluster_cfg.voters.len());
+        assert_eq!(3, actual_cluster_cfg.replicas.len());
+
+        assert_eq!(2, locked.iter_mut().count());
     }
 }

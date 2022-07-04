@@ -27,6 +27,12 @@ pub struct Query {
     pub key: String,
 }
 
+impl Query {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        bincode::serialize(self).unwrap()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct HashState {
     logger: slog::Logger,
@@ -82,5 +88,113 @@ impl StateMachine for HashState {
 
         let state = self.state.lock().unwrap();
         bincode::serialize(&state.get(&query.key)).map_err(|e| Error::Serialize(e.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use crate::log;
+
+    use super::*;
+
+    #[rstest]
+    #[case::apply(vec![Command::Insert(String::from("hello"), 0)], vec![(String::from("hello"), 0)])]
+    #[case::apply_remove(vec![Command::Insert(String::from("hello"), 0), Command::Remove(String::from("hello"))], vec![])]
+    fn test_apply(#[case] cmds: Vec<Command>, #[case] expected_entries: Vec<(String, u128)>) {
+        let hs = HashState::new(&log::noop());
+        for cmd in cmds {
+            let serialized = cmd.to_bytes();
+            hs.apply(crate::raft::Command {
+                term: 1,
+                data: serialized,
+            })
+            .expect("Failed to call apply");
+        }
+
+        let dump = hs.dump();
+        assert_eq!(dump.len(), expected_entries.len());
+        for (idx, expected) in expected_entries.iter().enumerate() {
+            assert_eq!(expected.0, dump[idx].0);
+            assert_eq!(expected.1, dump[idx].1);
+        }
+    }
+
+    #[test]
+    fn test_apply_deserialize_fail() {
+        let hs = HashState::new(&log::noop());
+        let res = hs.apply(crate::raft::Command {
+            term: 1,
+            data: Vec::default(),
+        });
+        assert!(res.is_err());
+        let res = res.unwrap_err();
+        assert!(matches!(res, Error::Serialize(..)));
+    }
+
+    #[rstest]
+    #[case::happy_path(vec![Command::Insert(String::from("hello"), 0)], Query{key: String::from("hello")}, Some(0))]
+    #[case::empty(vec![], Query{key: String::from("hello")}, None)]
+    fn test_read(#[case] cmds: Vec<Command>, #[case] query: Query, #[case] expected: Option<u128>) {
+        let hs = HashState::new(&log::noop());
+        for cmd in cmds {
+            let serialized = cmd.to_bytes();
+            hs.apply(crate::raft::Command {
+                term: 1,
+                data: serialized,
+            })
+            .expect("Failed to call apply");
+        }
+
+        let query = query.to_bytes();
+        let read = hs.read(query).expect("Failed to call read.");
+        let read: Option<u128> =
+            bincode::deserialize(read.as_slice()).expect("Failed to deserialize value.");
+
+        if expected.is_some() {
+            assert!(read.is_some());
+
+            let read = read.unwrap();
+            let expected = expected.unwrap();
+            assert_eq!(expected, read);
+        } else {
+            assert!(read.is_none());
+        }
+    }
+
+    #[test]
+    fn test_read_deserialize_fail() {
+        let hs = HashState::new(&log::noop());
+        let read = hs.read(Vec::default());
+        assert!(read.is_err());
+        let read = read.unwrap_err();
+        assert!(matches!(read, Error::Serialize(..)));
+    }
+
+    #[test]
+    fn test_derived() {
+        let cmd = Command::Insert(String::from("hello"), 1);
+        let cmd_str = format!("{:?}", cmd);
+        assert_eq!(cmd_str, "Insert(\"hello\", 1)");
+
+        let cmd = Command::Remove(String::from("hello"));
+        let cmd_str = format!("{:?}", cmd);
+        assert_eq!(cmd_str, "Remove(\"hello\")");
+
+        let query = Query {
+            key: String::from("hello"),
+        };
+        let query_str = format!("{:?}", query);
+        assert_eq!(query_str, "Query { key: \"hello\" }");
+
+        let log = log::noop();
+        let hs = HashState::new(&log);
+        let cloned = hs.clone();
+        let hs_str = format!("{:?}", cloned);
+        assert_eq!(
+            hs_str,
+            "HashState { logger: Logger(), state: Mutex { data: {}, poisoned: false, .. } }"
+        )
     }
 }

@@ -24,9 +24,10 @@ where
 
     async fn add_impl(&self, req: Request<AddRequest>) -> Result<Response<AddResponse>, Status> {
         let req = req.into_inner();
-        let req = req.into_raft().await?;
-        let resp = self.ch.add_server(req).await?;
-        AddResponse::from_raft(resp)
+        self.ch
+            .add_server(req.into())
+            .await
+            .map(AddResponse::from)
             .map(Response::new)
             .map_err(|e| e.into())
     }
@@ -36,18 +37,20 @@ where
         req: Request<RemoveRequest>,
     ) -> Result<Response<RemoveResponse>, Status> {
         let req = req.into_inner();
-        let req = req.into_raft()?;
-        let resp = self.ch.remove_server(req).await?;
-        RemoveResponse::from_raft(resp)
+        self.ch
+            .remove_server(req.into())
+            .await
+            .map(RemoveResponse::from)
             .map(Response::new)
             .map_err(|e| e.into())
     }
 
     async fn list_impl(&self, req: Request<ListRequest>) -> Result<Response<ListResponse>, Status> {
         let req = req.into_inner();
-        let req = req.into_raft()?;
-        let resp = self.ch.list_servers(req).await?;
-        ListResponse::from_raft(resp)
+        self.ch
+            .list_servers(req.into())
+            .await
+            .map(ListResponse::from)
             .map(Response::new)
             .map_err(|e| e.into())
     }
@@ -70,5 +73,86 @@ where
 
     async fn list(&self, request: Request<ListRequest>) -> Result<Response<ListResponse>, Status> {
         self.list_impl(request).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio_test::block_on as wait;
+
+    use crate::raft::{
+        AddServerResponse, ListServerResponse, MockClusterHandler, RemoveServerResponse,
+    };
+
+    use super::*;
+
+    #[test]
+    fn test_add() {
+        let mut mock = MockClusterHandler::default();
+        mock.expect_add_server().once().returning(|_| {
+            Ok(AddServerResponse {
+                leader_hint: String::from("leader"),
+                status: String::from("OK"),
+            })
+        });
+
+        let srv = Handler::new(mock);
+
+        let inner = AddRequest {
+            member: String::from("member"),
+            replica: false,
+        };
+
+        let req = Request::new(inner);
+        let result = wait(srv.add(req)).expect("Should not have returned an error.");
+        let result = result.into_inner();
+        assert_eq!(result.leader_hint, "leader");
+        assert_eq!(result.status, "OK");
+    }
+
+    #[test]
+    fn test_remove() {
+        let mut mock = MockClusterHandler::default();
+        mock.expect_remove_server().once().returning(|_| {
+            Ok(RemoveServerResponse {
+                leader_hint: String::from("leader"),
+                status: String::from("OK"),
+            })
+        });
+
+        let srv = Handler::new(mock);
+
+        let inner = RemoveRequest {
+            member: String::from("member"),
+        };
+
+        let req = Request::new(inner);
+        let result = wait(srv.remove(req)).expect("Should not have returned an error.");
+        let result = result.into_inner();
+        assert_eq!(result.leader_hint, "leader");
+        assert_eq!(result.status, "OK");
+    }
+
+    #[test]
+    fn test_list() {
+        let mut mock = MockClusterHandler::default();
+        mock.expect_list_servers().once().returning(|_| {
+            Ok(ListServerResponse {
+                leader: String::from("leader"),
+                replicas: Vec::default(),
+                voters: Vec::default(),
+                term: 1,
+            })
+        });
+
+        let srv = Handler::new(mock);
+
+        let inner = ListRequest {};
+
+        let req = Request::new(inner);
+        let result = wait(srv.list(req)).expect("Should not have returned an error.");
+        let result = result.into_inner();
+        assert_eq!(result.leader, "leader");
+        assert_eq!(result.term, 1u128.to_be_bytes().to_vec());
     }
 }

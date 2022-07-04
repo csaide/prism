@@ -10,3 +10,6 @@ mod peers;
 pub use client::Client;
 pub use peer::Peer;
 pub use peers::Peers;
+
+#[cfg(test)]
+pub use client::mock::{get_lock, MockClient, MTX};

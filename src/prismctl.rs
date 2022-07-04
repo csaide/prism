@@ -1,6 +1,8 @@
 // (c) Copyright 2022 Christian Saide
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::ffi::OsString;
+
 use exitcode::ExitCode;
 use structopt::clap::{crate_version, AppSettings};
 use structopt::StructOpt;
@@ -34,9 +36,14 @@ struct PrismctlConfig {
 }
 
 pub async fn run() -> ExitCode {
-    let cfg = match crate::base_config::<PrismctlConfig>(PRISMCTL) {
+    let args: Vec<OsString> = std::env::args_os().collect();
+    let cfg = match crate::base_config::<PrismctlConfig>(args, PRISMCTL) {
         Ok(cfg) => cfg,
-        Err(code) => return code,
+        Err((code, _)) if code == exitcode::CONFIG => return code,
+        Err((code, msg)) => {
+            println!("{}", msg);
+            return code;
+        }
     };
 
     let root_logger = log::new(&cfg.log_config, PRISMCTL, crate_version!());

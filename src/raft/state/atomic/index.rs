@@ -36,3 +36,16 @@ impl From<u128> for AtomicIndex {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_atomic_index() {
+        let index = AtomicIndex::from(2);
+        assert_eq!(2, index.get());
+        index.set(20);
+        assert_eq!(20, index.get());
+    }
+}

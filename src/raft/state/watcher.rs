@@ -65,3 +65,46 @@ impl Watcher {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tokio_test::block_on as wait;
+
+    use super::*;
+
+    #[test]
+    fn test_register_command() {
+        let watch = Watcher::default();
+
+        let rx = watch.register_command_watch(1);
+        watch.command_applied(1, Ok(Vec::default()));
+        watch.command_applied(2, Ok(Vec::default()));
+
+        let resp = wait(rx);
+        assert!(resp.is_ok());
+    }
+
+    #[test]
+    fn test_register_registration() {
+        let watch = Watcher::default();
+
+        let rx = watch.register_registration_watch(1);
+        watch.registration_applied(1);
+        watch.registration_applied(2);
+
+        let resp = wait(rx);
+        assert!(resp.is_ok());
+    }
+
+    #[test]
+    fn test_register_cluster_cfg() {
+        let watch = Watcher::default();
+
+        let rx = watch.register_cluster_config_watch(1);
+        watch.cluster_config_applied(1);
+        watch.cluster_config_applied(2);
+
+        let resp = wait(rx);
+        assert!(resp.is_ok());
+    }
+}

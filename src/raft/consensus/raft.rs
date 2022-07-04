@@ -183,3 +183,285 @@ where
         self.vote(vote_request).await
     }
 }
+
+#[cfg(test)]
+pub mod mock {
+    use mockall::mock;
+
+    mock! {
+        #[derive(Debug)]
+        pub RaftHandler<P> {}
+
+        #[tonic::async_trait]
+        impl<P: Send + Sync + Clone + 'static> super::RaftHandler for RaftHandler<P> {
+            async fn append_entries(
+                &self,
+                append_request: super::AppendEntriesRequest,
+            ) -> super::Result<super::AppendEntriesResponse>;
+            async fn vote_request(&self, vote_request: super::RequestVoteRequest) -> super::Result<super::RequestVoteResponse>;
+        }
+
+        impl<P: Send + Sync + Clone + 'static> Clone for RaftHandler<P> {
+            fn clone(&self) -> Self;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, sync::Arc};
+
+    use rstest::rstest;
+    use tokio::sync::watch;
+
+    use crate::{
+        log,
+        raft::{ClusterConfig, Command, Entry, MockClient, Mode, Peer},
+    };
+
+    use super::*;
+
+    fn test_setup(mode: Mode) -> (Raft<MockClient>, Arc<State<MockClient>>) {
+        let logger = log::noop();
+        let id = String::from("leader");
+        let db = sled::Config::new()
+            .temporary(true)
+            .open()
+            .expect("Failed to open temp database.");
+        let state = Arc::new(
+            State::<MockClient>::new(id.clone(), HashMap::default(), &db)
+                .expect("Failed to create new State object."),
+        );
+        state.set_mode(mode);
+        state.set_current_term(1);
+        let leader_id = String::from("leader");
+        let leader = Peer::new(leader_id.clone());
+        state.peers.lock().append(leader_id, leader);
+
+        let log = Arc::new(Log::new(&db).expect("Failed to create new persistent Log."));
+        let (commit_tx, mut commit_rx) = watch::channel(());
+        let commit_tx = Arc::new(commit_tx);
+        let commit_state = state.clone();
+        let commit_logger = logger.clone();
+        tokio::task::spawn(async move {
+            while !commit_state.is_dead() && commit_rx.changed().await.is_ok() {
+                debug!(commit_logger, "Got commit");
+            }
+        });
+
+        let (heartbeat_tx, mut heartbeat_rx) = watch::channel(());
+        let heartbeat_tx = Arc::new(heartbeat_tx);
+        let heartbeat_state = state.clone();
+        let heartbeat_logger = logger.clone();
+        tokio::task::spawn(async move {
+            while !heartbeat_state.is_dead() && heartbeat_rx.changed().await.is_ok() {
+                debug!(heartbeat_logger, "Got commit");
+            }
+        });
+
+        (
+            Raft::new(&logger, state.clone(), log.clone(), heartbeat_tx, commit_tx),
+            state,
+        )
+    }
+
+    #[rstest]
+    #[case::dead(
+        Mode::Dead,
+        vec![
+            (AppendEntriesRequest {
+                entries: Vec::default(),
+                leader_commit_idx:1,
+                leader_id:            String::from("leader"),
+                prev_log_idx:1,
+                prev_log_term:1,
+                term: 1,
+            },
+            Err(Error::Dead))
+        ]
+    )]
+    #[case::smaller_term(
+        Mode::Follower,
+        vec![
+            (AppendEntriesRequest{
+                entries: Vec::default(),
+                leader_commit_idx: 0,
+                leader_id:  String::from("leader"),
+                prev_log_idx: 0,
+                prev_log_term: 0,
+                term: 0
+            },
+            Ok(AppendEntriesResponse{
+                success: false,
+                term: 1
+            }))
+        ]
+    )]
+    #[case::greater_term(
+        Mode::Follower,
+        vec![
+            (AppendEntriesRequest{
+                entries: Vec::default(),
+                leader_commit_idx: 1,
+                leader_id:  String::from("leader"),
+                prev_log_idx: 0,
+                prev_log_term: 0,
+                term: 2,
+            },
+            Ok(AppendEntriesResponse{
+                success: true,
+                term: 2
+            }))
+        ]
+    )]
+    #[case::candidate_same_term(
+        Mode::Candidate,
+        vec![
+            (AppendEntriesRequest{
+                entries: Vec::default(),
+                leader_commit_idx: 1,
+                leader_id:  String::from("leader"),
+                prev_log_idx: 0,
+                prev_log_term: 0,
+                term: 1,
+            },
+            Ok(AppendEntriesResponse{
+                success: true,
+                term: 1
+            }))
+        ]
+    )]
+    #[case::same_term_cluster_cfg(
+        Mode::Follower,
+        vec![
+            (AppendEntriesRequest{
+                entries: vec![Entry::ClusterConfig(ClusterConfig{
+                    replicas: Vec::default(),
+                    term: 1,
+                    voters: Vec::default(),
+                })],
+                leader_commit_idx: 1,
+                leader_id:  String::from("leader"),
+                prev_log_idx: 0,
+                prev_log_term: 0,
+                term: 1,
+            },
+            Ok(AppendEntriesResponse{
+                success: true,
+                term: 1
+            }))
+        ]
+    )]
+    #[case::happy_path(
+        Mode::Follower,
+        vec![
+            (AppendEntriesRequest{
+                entries: vec![Entry::Command(Command{
+                    term: 1,
+                    data: vec![0x00,0x01,0x02],
+                }),Entry::Command(Command{
+                    term: 1,
+                    data: vec![0x00,0x01,0x02],
+                })],
+                leader_commit_idx: 2,
+                leader_id:  String::from("leader"),
+                prev_log_idx: 0,
+                prev_log_term: 0,
+                term: 1,
+            },
+            Ok(AppendEntriesResponse{
+                success: true,
+                term: 1,
+            })),
+            (AppendEntriesRequest{
+                entries: vec![Entry::Command(Command{
+                    term: 1,
+                    data: vec![0x00,0x01,0x02],
+                }),Entry::Command(Command{
+                    term: 1,
+                    data: vec![0x00,0x01,0x02],
+                })],
+                leader_commit_idx: 4,
+                leader_id:  String::from("leader"),
+                prev_log_idx: 2,
+                prev_log_term: 1,
+                term: 2,
+            },
+            Ok(AppendEntriesResponse{
+                success: true,
+                term: 2,
+            }))
+        ]
+    )]
+    #[tokio::test]
+    async fn test_append_entries(
+        #[case] mode: Mode,
+        #[case] req_resp_pairs: Vec<(AppendEntriesRequest, Result<AppendEntriesResponse>)>,
+    ) {
+        let (raft, state) = test_setup(mode);
+        for (request, expected) in req_resp_pairs {
+            let resp = raft.append_entries(request).await;
+            if expected.is_ok() {
+                assert!(resp.is_ok());
+                let resp = resp.unwrap();
+                let expected = expected.unwrap();
+
+                assert_eq!(resp.success, expected.success);
+                assert_eq!(resp.term, expected.term);
+            } else {
+                assert!(resp.is_err());
+            }
+        }
+        state.transition_dead();
+    }
+
+    #[rstest]
+    #[case::dead(
+        Mode::Dead,
+        vec![
+            (RequestVoteRequest {
+                candidate_id: String::from("leader"),
+                last_log_idx: 0,
+                last_log_term: 0,
+                term: 1,
+            },
+            Err(Error::Dead))
+        ]
+    )]
+    #[case::greater_term(
+        Mode::Follower,
+        vec![
+            (RequestVoteRequest {
+                candidate_id: String::from("leader"),
+                last_log_idx: 0,
+                last_log_term: 0,
+                term: 2,
+            },
+            Ok(RequestVoteResponse{
+                vote_granted: true,
+                term: 2,
+            }))
+        ]
+    )]
+    #[tokio::test]
+    async fn test_vote_request(
+        #[case] mode: Mode,
+        #[case] req_resp_pairs: Vec<(RequestVoteRequest, Result<RequestVoteResponse>)>,
+    ) {
+        let (raft, state) = test_setup(mode);
+        for (request, expected) in req_resp_pairs {
+            let resp = raft.vote_request(request).await;
+            if expected.is_ok() {
+                assert!(resp.is_ok());
+                let resp = resp.unwrap();
+                let expected = expected.unwrap();
+
+                assert_eq!(resp.vote_granted, expected.vote_granted);
+                assert_eq!(resp.term, expected.term);
+            } else {
+                assert!(resp.is_err());
+            }
+        }
+        state.transition_dead();
+    }
+}

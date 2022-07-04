@@ -109,16 +109,57 @@ where
 }
 
 #[cfg(test)]
-#[cfg(not(tarpaulin_include))]
 mod tests {
     use std::collections::HashMap;
 
     use crate::{
         log,
-        raft::{test_harness::MockPeer, AppendEntriesResponse, Error, Peer},
+        raft::{Error, MockClient, Peer},
     };
 
     use super::*;
+
+    fn mock_client_vote_failed() -> MockClient {
+        let mut mock = MockClient::default();
+        mock.expect_clone().once().returning(move || {
+            let mut mock = MockClient::default();
+            mock.expect_vote()
+                .once()
+                .returning(move |_| Err(Error::Dead));
+            mock
+        });
+        mock
+    }
+
+    fn mock_client_vote_false(term: u128) -> MockClient {
+        let mut mock = MockClient::default();
+        mock.expect_clone().once().returning(move || {
+            let mut mock = MockClient::default();
+            mock.expect_vote().once().returning(move |_| {
+                Ok(RequestVoteResponse {
+                    term,
+                    vote_granted: false,
+                })
+            });
+            mock
+        });
+        mock
+    }
+
+    fn mock_client_vote_true() -> MockClient {
+        let mut mock = MockClient::default();
+        mock.expect_clone().once().returning(move || {
+            let mut mock = MockClient::default();
+            mock.expect_vote().once().returning(|_| {
+                Ok(RequestVoteResponse {
+                    term: 1,
+                    vote_granted: true,
+                })
+            });
+            mock
+        });
+        mock
+    }
 
     #[test]
     fn test_candidate_step_down() {
@@ -131,17 +172,8 @@ mod tests {
         let log = Log::new(&db).expect("Failed to open log.");
         let log = Arc::new(log);
 
-        let peer1 = MockPeer {
-            append_resp: Arc::new(Box::new(|| -> Result<AppendEntriesResponse> {
-                unimplemented!()
-            })),
-            vote_resp: Arc::new(Box::new(|| -> Result<RequestVoteResponse> {
-                Ok(RequestVoteResponse {
-                    term: 0,
-                    vote_granted: false,
-                })
-            })),
-        };
+        let peer1 = mock_client_vote_false(1);
+
         let mut peers = HashMap::default();
         let key = "grpc://localhost:12345".to_string();
         peers.insert(key.clone(), Peer::with_client(key, peer1));
@@ -166,39 +198,9 @@ mod tests {
         let log = Log::new(&db).expect("Failed to open log.");
         let log = Arc::new(log);
 
-        let peer1 = MockPeer {
-            append_resp: Arc::new(Box::new(|| -> Result<AppendEntriesResponse> {
-                unimplemented!()
-            })),
-            vote_resp: Arc::new(Box::new(|| -> Result<RequestVoteResponse> {
-                Ok(RequestVoteResponse {
-                    term: 0,
-                    vote_granted: false,
-                })
-            })),
-        };
-        let peer2 = MockPeer {
-            append_resp: Arc::new(Box::new(|| -> Result<AppendEntriesResponse> {
-                unimplemented!()
-            })),
-            vote_resp: Arc::new(Box::new(|| -> Result<RequestVoteResponse> {
-                Ok(RequestVoteResponse {
-                    term: 1,
-                    vote_granted: true,
-                })
-            })),
-        };
-        let peer3 = MockPeer {
-            append_resp: Arc::new(Box::new(|| -> Result<AppendEntriesResponse> {
-                unimplemented!()
-            })),
-            vote_resp: Arc::new(Box::new(|| -> Result<RequestVoteResponse> {
-                Ok(RequestVoteResponse {
-                    term: 1,
-                    vote_granted: true,
-                })
-            })),
-        };
+        let peer1 = mock_client_vote_false(1);
+        let peer2 = mock_client_vote_true();
+        let peer3 = mock_client_vote_true();
 
         let mut peers = HashMap::default();
         let key = "grpc://localhost:12345".to_string();
@@ -230,17 +232,7 @@ mod tests {
         let log = Log::new(&db).expect("Failed to open log.");
         let log = Arc::new(log);
 
-        let peer1 = MockPeer {
-            append_resp: Arc::new(Box::new(|| -> Result<AppendEntriesResponse> {
-                unimplemented!()
-            })),
-            vote_resp: Arc::new(Box::new(|| -> Result<RequestVoteResponse> {
-                Ok(RequestVoteResponse {
-                    term: 1000,
-                    vote_granted: false,
-                })
-            })),
-        };
+        let peer1 = mock_client_vote_false(1000);
         let mut peers = HashMap::default();
         let key = "grpc://localhost:12345".to_string();
         peers.insert(key.clone(), Peer::with_client(key, peer1));
@@ -269,14 +261,7 @@ mod tests {
         let log = Log::new(&db).expect("Failed to open log.");
         let log = Arc::new(log);
 
-        let peer1 = MockPeer {
-            append_resp: Arc::new(Box::new(|| -> Result<AppendEntriesResponse> {
-                unimplemented!()
-            })),
-            vote_resp: Arc::new(Box::new(|| -> Result<RequestVoteResponse> {
-                Err(Error::Missing)
-            })),
-        };
+        let peer1 = mock_client_vote_failed();
         let mut peers = HashMap::default();
         let key = "grpc://localhost:12345".to_string();
         peers.insert(key.clone(), Peer::with_client(key, peer1));

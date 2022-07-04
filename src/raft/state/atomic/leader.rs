@@ -37,3 +37,21 @@ impl Default for AtomicLeader {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_atomic_leader() {
+        let leader = AtomicLeader::default();
+
+        assert!(!leader.have_leader());
+        assert!(matches!(leader.leader(), None));
+
+        leader.saw_leader(String::from("leader"));
+        assert!(leader.have_leader());
+        assert!(matches!(leader.leader(), Some(..)));
+        assert_eq!(leader.leader().unwrap(), "leader")
+    }
+}

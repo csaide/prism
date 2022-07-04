@@ -98,8 +98,9 @@ pub fn new(cfg: &config::Config, bin: &'static str, version: &'static str) -> sl
 }
 
 #[cfg(test)]
-#[cfg(not(tarpaulin_include))]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
     #[test]
@@ -107,15 +108,12 @@ mod tests {
         default("test", "alpha");
     }
 
-    #[test]
-    fn test_new() {
+    #[rstest]
+    #[case::with_json(true)]
+    #[case::with_json(false)]
+    fn test_new(#[case] json: bool) {
         let cfg = Config {
-            json: true,
-            level: Level::Debug,
-        };
-        new(&cfg, "test", "alpha");
-        let cfg = Config {
-            json: false,
+            json,
             level: Level::Debug,
         };
         new(&cfg, "test", "alpha");

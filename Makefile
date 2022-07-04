@@ -111,7 +111,7 @@ promote:
 # Source code validation, formatting, linting.
 ###
 
-.PHONY: fmt lint units bench coverage license check
+.PHONY: fmt lint units bench coverage coverage-ci license check
 
 fmt:
 	@bash ./dist/bin/print.sh "Formatting Code"
@@ -128,8 +128,11 @@ units:
 
 coverage:
 	@bash ./dist/bin/print.sh "Running tests with coverage"
-	@mkdir -p target/coverage/
-	@cargo +nightly tarpaulin -o Html --output-dir target/coverage/ --run-types Tests,Doctests
+	@cargo +nightly llvm-cov
+
+coverage-ci:
+	@bash ./dist/bin/print.sh "Running tests with coverage"
+	@cargo +nightly llvm-cov --hide-instantiations --html
 
 license:
 	@bash ./dist/bin/print.sh "Verifying licensing"
@@ -145,4 +148,4 @@ check: fmt lint units license
 
 clean:
 	@bash ./dist/bin/print.sh "Cleaning"
-	@rm -rf target/
+	@rm -rf target/ output/

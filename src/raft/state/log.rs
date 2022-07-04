@@ -16,12 +16,10 @@ impl Log {
         Ok(Log { store })
     }
 
-    #[inline]
     pub fn len(&self) -> usize {
         self.store.len()
     }
 
-    #[inline]
     pub fn is_empty(&self) -> bool {
         self.store.is_empty()
     }
@@ -154,10 +152,13 @@ impl Log {
 }
 
 #[cfg(test)]
-#[cfg(not(tarpaulin_include))]
 mod tests {
+    use rstest::rstest;
+    use tokio_test::block_on as wait;
+
+    use crate::raft::{ClusterConfig, Command, Registration};
+
     use super::*;
-    use crate::raft::ClusterConfig;
 
     #[test]
     fn test_log() {
@@ -174,6 +175,7 @@ mod tests {
 
         assert_eq!(0, last_log_idx);
         assert_eq!(0, last_log_term);
+        assert!(log.get(0).is_err());
 
         let payload = Entry::ClusterConfig(ClusterConfig {
             term: 2,
@@ -202,5 +204,92 @@ mod tests {
             .get(last_log_idx)
             .expect("Failed to retrieve existing log payload.");
         assert_eq!(actual, payload)
+    }
+
+    #[rstest]
+    #[case::cluster_cfg(Entry::ClusterConfig(ClusterConfig {
+        term: 2,
+        voters: vec![
+            String::from("grpc://example.com:12345"),
+            String::from("grpc://example.com:23456"),
+            String::from("grpc://example.com:34567"),
+        ],
+        replicas: vec![],
+    }))]
+    #[case::command(Entry::Command(Command {
+        data: Vec::default(),
+        term: 2,
+    }))]
+    #[case::registration(Entry::Registration(Registration {
+        term: 2,
+    }))]
+    fn test_idx_term_matching(#[case] input: Entry) {
+        let db = sled::Config::new()
+            .temporary(true)
+            .open()
+            .expect("Failed to open temp database.");
+
+        let log = Log::new(&db).expect("Failed to create new persistent log.");
+
+        log.append(input.clone())
+            .expect("Failed to append payload to empty log.");
+
+        assert_eq!(1, log.len());
+        assert!(!log.is_empty());
+
+        let (last_log_idx, last_log_term) = log
+            .last_log_idx_and_term()
+            .expect("Failed to retrieve last log idx/term.");
+
+        assert_eq!(1, last_log_idx);
+        assert_eq!(input.term(), last_log_term);
+        assert!(log
+            .idx_and_term_match(last_log_idx, last_log_term)
+            .expect("Failed to test idx/term equality"));
+    }
+
+    #[rstest]
+    #[case::happy_path(vec![
+        Entry::Registration(Registration {
+            term: 2,
+        }),
+        Entry::Registration(Registration {
+            term: 2,
+        }),
+        Entry::Registration(Registration {
+            term: 2,
+        }),
+    ],vec![
+        Entry::Registration(Registration {
+            term: 2,
+        }),
+        Entry::Registration(Registration {
+            term: 2,
+        }),
+        Entry::Registration(Registration {
+            term: 2,
+        }),
+    ])]
+    fn test_append_entries(#[case] first_set: Vec<Entry>, #[case] second_set: Vec<Entry>) {
+        let db = sled::Config::new()
+            .temporary(true)
+            .open()
+            .expect("Failed to open temp database.");
+
+        let log = Log::new(&db).expect("Failed to create new persistent log.");
+
+        log.append_entries(0, first_set.clone())
+            .expect("Failed to append input entries.");
+
+        log.append_entries(0, second_set.clone())
+            .expect("Failed to append input entries.");
+
+        wait(log.flush()).expect("Failed to flush data to disk.");
+
+        let dump = log.dump().expect("Failed to dump database.");
+        assert_eq!(dump.len(), first_set.len());
+        for (idx, entry) in first_set.iter().enumerate() {
+            assert!(dump[idx] == *entry);
+        }
     }
 }

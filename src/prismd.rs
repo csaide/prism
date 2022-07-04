@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::time::Duration;
 
-use crate::raft::{ConsensusMod, Peer};
+use crate::raft::{Module, Peer};
 use crate::rpc::cluster::{AddRequest, ClusterClient};
 use crate::rpc::server::serve;
 use crate::{hash, log};
@@ -70,9 +71,14 @@ struct PrismdConfig {
 }
 
 pub async fn run() -> ExitCode {
-    let cfg = match crate::base_config::<PrismdConfig>(PRISMD) {
+    let args: Vec<OsString> = std::env::args_os().collect();
+    let cfg = match crate::base_config::<PrismdConfig>(args, PRISMD) {
         Ok(cfg) => cfg,
-        Err(code) => return code,
+        Err((code, _)) if code == exitcode::CONFIG => return code,
+        Err((code, msg)) => {
+            println!("{}", msg);
+            return code;
+        }
     };
 
     let root_logger = log::new(&cfg.log_config, PRISMD, crate_version!());
@@ -129,7 +135,7 @@ pub async fn run() -> ExitCode {
         });
     }
 
-    let mut cm = match ConsensusMod::new(
+    let mut cm = match Module::new(
         format!("grpc://127.0.0.1:{}", cfg.rpc_port),
         peers,
         &root_logger,

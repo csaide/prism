@@ -7,16 +7,10 @@ mod error;
 mod models;
 mod state;
 mod state_machine;
-#[cfg(test)]
-#[cfg(not(tarpaulin_include))]
-mod test_harness;
 mod workers;
 
 pub use cluster::*;
-pub use consensus::{
-    Cluster, ClusterHandler, ConsensusMod, Frontend, FrontendHandler, Raft, RaftHandler, Repo,
-    Repository,
-};
+pub use consensus::*;
 pub use error::{Error, Result};
 pub use models::*;
 pub use state::*;

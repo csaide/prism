@@ -5,21 +5,18 @@ use std::net::SocketAddr;
 
 use tonic::transport::{Channel, Server};
 
-use crate::raft::Repository;
+use crate::raft::Repo;
 
 use super::{
     cluster, frontend, interceptor,
     raft::{self, RaftClient},
 };
 
-pub async fn serve<R>(
+pub async fn serve(
     addr: SocketAddr,
-    cm: R,
+    cm: Repo<RaftClient<Channel>>,
     logger: slog::Logger,
-) -> Result<(), tonic::transport::Error>
-where
-    R: Repository<RaftClient<Channel>>,
-{
+) -> Result<(), tonic::transport::Error> {
     let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
         .set_service_status("", tonic_health::ServingStatus::Serving)
