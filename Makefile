@@ -65,7 +65,7 @@ docs:
 # Ensure we compile each of the targets properly using the correct mode.
 compile-bin.%:
 	@bash ./dist/bin/print.sh "Building target: '$*' mode: '$(BUILD)'"
-	@mkdir -p ./target/output/$(BUILD)
+	@mkdir -p ./output/$(BUILD)
 	@RUSTFLAGS="-Ctarget-feature=+crt-static" cargo build $(build_$(BUILD)) --target $(target_$*)
 	@if [ "$(BUILD)" = "release" ]; then bash ./dist/bin/strip-compress.sh "$(BUILD)" "$(target_$*)" "$(strip_$*)"; fi
 	@bash dist/bin/package.sh "$(BUILD)" "$(target_$*)" "$*"
@@ -152,4 +152,4 @@ check: fmt lint units license
 
 clean:
 	@bash ./dist/bin/print.sh "Cleaning"
-	@rm -rf target/
+	@rm -rf target/ output/

@@ -45,8 +45,8 @@ ARG TARGETARCH
 ARG BUILD=debug
 
 COPY --from=build --chown=nonroot:nonroot --chmod=0700 /opt/prism/grpc_health_probe /bin/grpc_health_probe
-COPY --from=build --chown=nonroot:nonroot --chmod=0700 /opt/prism/target/output/${BUILD}/prismd_linux-${TARGETARCH} /bin/prismd
-COPY --from=build --chown=nonroot:nonroot --chmod=0700 /opt/prism/target/output/${BUILD}/prismctl_linux-${TARGETARCH} /bin/prismctl
+COPY --from=build --chown=nonroot:nonroot --chmod=0700 /opt/prism/output/${BUILD}/prismd_linux-${TARGETARCH} /bin/prismd
+COPY --from=build --chown=nonroot:nonroot --chmod=0700 /opt/prism/output/${BUILD}/prismctl_linux-${TARGETARCH} /bin/prismctl
 
 LABEL org.opencontainers.image.source=https://github.com/csaide/prism
 

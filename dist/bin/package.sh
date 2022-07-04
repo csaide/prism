@@ -9,6 +9,6 @@ SUFFIX="${3}"
 
 for bin in $(find target/${TARGET}/${BUILD}/* -maxdepth 0 -type f -executable); do
     name="$(basename ${bin})"
-    rm -f ./target/output/${BUILD}/${name}_${SUFFIX}
-    cp ${bin} ./target/output/${BUILD}/${name}_${SUFFIX}
+    rm -f ./output/${BUILD}/${name}_${SUFFIX}
+    cp ${bin} ./output/${BUILD}/${name}_${SUFFIX}
 done
