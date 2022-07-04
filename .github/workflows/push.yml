@@ -25,10 +25,11 @@ jobs:
           profile: ${{ env.TOOLCHAIN_PROFILE }}
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           override: true
+          components: llvm-tools-preview
       - name: Cache
         uses: Swatinem/rust-cache@v1
       - name: Coverage
-        run: make coverage-ci
+        run: cargo install cargo-llvm-cov && make coverage-ci
       - name: Upload to Codecov
         uses: codecov/codecov-action@v1.0.2
         with:
