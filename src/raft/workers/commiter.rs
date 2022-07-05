@@ -13,6 +13,7 @@ pub struct Commiter<P, S> {
     log: Arc<Log>,
     state_machine: Arc<S>,
     commit_rx: watch::Receiver<()>,
+    applied_tx: Arc<watch::Sender<()>>,
     watcher: Arc<Watcher>,
 }
 
@@ -27,6 +28,7 @@ where
         log: Arc<Log>,
         state_machine: Arc<S>,
         commit_rx: watch::Receiver<()>,
+        applied_tx: Arc<watch::Sender<()>>,
         watcher: Arc<Watcher>,
     ) -> Commiter<P, S> {
         Commiter {
@@ -35,6 +37,7 @@ where
             log,
             state_machine,
             commit_rx,
+            applied_tx,
             watcher,
         }
     }
@@ -77,6 +80,10 @@ where
             }
 
             self.state.set_last_applied_idx(commit_idx);
+            if let Err(e) = self.applied_tx.send(()) {
+                error!(self.logger, "Failed to send applied broadcast."; "error" => e.to_string());
+                return;
+            }
         }
     }
 }

@@ -88,8 +88,7 @@ enum Command {
     },
 }
 
-pub async fn run() -> ExitCode {
-    let args: Vec<OsString> = std::env::args_os().collect();
+pub async fn run(args: Vec<OsString>) -> ExitCode {
     let cfg = match crate::base_config::<PrismctlConfig>(args, PRISMCTL) {
         Ok(cfg) => cfg,
         Err((code, _)) if code == exitcode::CONFIG => return code,

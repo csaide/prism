@@ -28,6 +28,7 @@ pub struct Module<P, S> {
     candidate: Candidate<P>,
 
     commit_rx: watch::Receiver<()>,
+    applied_tx: Arc<watch::Sender<()>>,
 }
 
 impl<P, S> Module<P, S>
@@ -48,6 +49,8 @@ where
         let heartbeat_tx = Arc::new(heartbeat_tx);
         let (commit_tx, commit_rx) = watch::channel(());
         let commit_tx = Arc::new(commit_tx);
+        let (applied_tx, applied_rx) = watch::channel(());
+        let applied_tx = Arc::new(applied_tx);
 
         let logger = logger.new(o!("id" => id.clone()));
         let log = Arc::new(Log::new(db)?);
@@ -60,6 +63,7 @@ where
             log.clone(),
             watcher.clone(),
             commit_tx.clone(),
+            applied_rx,
             submit_tx.clone(),
             state_machine.clone(),
         );
@@ -93,6 +97,7 @@ where
             candidate,
             state_machine,
             commit_rx,
+            applied_tx,
         })
     }
 
@@ -135,6 +140,7 @@ where
             self.log.clone(),
             self.state_machine.clone(),
             self.commit_rx.clone(),
+            self.applied_tx.clone(),
             self.watcher.clone(),
         );
         tokio::task::spawn(async move { commiter.exec().await });

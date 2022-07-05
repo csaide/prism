@@ -73,8 +73,7 @@ struct PrismdConfig {
     join: Option<String>,
 }
 
-pub async fn run() -> ExitCode {
-    let args: Vec<OsString> = std::env::args_os().collect();
+pub async fn run(args: Vec<OsString>) -> ExitCode {
     let cfg = match crate::base_config::<PrismdConfig>(args, PRISMD) {
         Ok(cfg) => cfg,
         Err((code, _)) if code == exitcode::CONFIG => return code,

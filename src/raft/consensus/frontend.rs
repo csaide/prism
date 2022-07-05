@@ -32,6 +32,7 @@ pub struct Frontend<P, S> {
     log: Arc<Log>,
     watcher: Arc<Watcher>,
     submit_tx: Sender<()>,
+    applied_rx: watch::Receiver<()>,
     quorum: Arc<Quorum<P>>,
     state_machine: Arc<S>,
 }
@@ -47,6 +48,7 @@ where
         log: Arc<Log>,
         watcher: Arc<Watcher>,
         commit_tx: Arc<watch::Sender<()>>,
+        applied_rx: watch::Receiver<()>,
         submit_tx: Sender<()>,
         state_machine: Arc<S>,
     ) -> Frontend<P, S> {
@@ -56,6 +58,7 @@ where
             log,
             watcher,
             submit_tx,
+            applied_rx,
             quorum,
             state_machine,
         }
@@ -86,9 +89,13 @@ where
     }
 
     async fn submit_query(&self, query: Vec<u8>) -> Result<Vec<u8>> {
-        let _read_idx = self.state.get_commit_idx();
+        let read_idx = self.state.get_commit_idx();
 
         if self.quorum.exec().await {
+            while self.state.get_last_applied_idx() < read_idx {
+                let mut applied_rx = self.applied_rx.clone();
+                let _ = applied_rx.changed().await;
+            }
             return self.state_machine.read(query);
         }
         Err(Error::NoQuorum)
@@ -242,6 +249,8 @@ mod tests {
         let log = Arc::new(Log::new(&db).expect("Failed to create new persistent Log."));
         let watcher = Arc::new(Watcher::default());
         let state_machine = Arc::new(HashState::new(&logger));
+        let (applied_tx, applied_rx) = watch::channel(());
+        let applied_tx = Arc::new(applied_tx);
         let (commit_tx, commit_rx) = watch::channel(());
         let commit_tx = Arc::new(commit_tx);
         let (submit_tx, mut submit_rx) = mpsc::channel(10);
@@ -252,6 +261,7 @@ mod tests {
             log.clone(),
             state_machine.clone(),
             commit_rx,
+            applied_tx,
             watcher.clone(),
         );
         let frontend = Frontend::new(
@@ -260,6 +270,7 @@ mod tests {
             log.clone(),
             watcher.clone(),
             commit_tx.clone(),
+            applied_rx,
             submit_tx,
             state_machine,
         );

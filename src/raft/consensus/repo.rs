@@ -55,6 +55,7 @@ mod tests {
         let heartbeat_tx = Arc::new(heartbeat_tx);
         let (commit_tx, _) = watch::channel(());
         let commit_tx = Arc::new(commit_tx);
+        let (_, applied_rx) = watch::channel(());
 
         let logger = log::noop();
         let peers = HashMap::default();
@@ -77,6 +78,7 @@ mod tests {
             log.clone(),
             watcher.clone(),
             commit_tx.clone(),
+            applied_rx,
             submit_tx.clone(),
             state_machine,
         );
