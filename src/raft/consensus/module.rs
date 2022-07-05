@@ -20,7 +20,7 @@ pub struct Module<P, S> {
     watcher: Arc<Watcher>,
 
     // RPC Handlers
-    repo: Option<Repo<P>>,
+    repo: Option<Repo<P, S>>,
 
     // Mode modules.
     leader: Leader<P>,
@@ -33,7 +33,7 @@ pub struct Module<P, S> {
 impl<P, S> Module<P, S>
 where
     P: Client + Send + Clone + 'static,
-    S: StateMachine + Send + 'static,
+    S: StateMachine + Clone + Send + 'static,
 {
     pub fn new(
         id: String,
@@ -42,6 +42,7 @@ where
         db: &sled::Db,
         state_machine: S,
     ) -> Result<Module<P, S>> {
+        let state_machine = Arc::new(state_machine);
         let (submit_tx, submit_rx) = mpsc::channel(2);
         let (heartbeat_tx, heartbeat_rx) = watch::channel(());
         let heartbeat_tx = Arc::new(heartbeat_tx);
@@ -54,10 +55,13 @@ where
         let watcher = Arc::new(Watcher::default());
 
         let frontend = Frontend::new(
+            &logger,
             state.clone(),
             log.clone(),
             watcher.clone(),
+            commit_tx.clone(),
             submit_tx.clone(),
+            state_machine.clone(),
         );
         let cluster = Cluster::new(
             &logger,
@@ -87,7 +91,7 @@ where
             leader,
             follower,
             candidate,
-            state_machine: Arc::new(state_machine),
+            state_machine,
             commit_rx,
         })
     }
@@ -104,7 +108,7 @@ where
         self.log.dump()
     }
 
-    pub fn get_repo(&mut self) -> Option<Repo<P>> {
+    pub fn get_repo(&mut self) -> Option<Repo<P, S>> {
         self.repo.take()
     }
 

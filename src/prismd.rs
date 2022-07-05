@@ -11,6 +11,9 @@ use crate::rpc::server::serve;
 use crate::{hash, log};
 
 use exitcode::ExitCode;
+use futures::stream::StreamExt;
+use signal_hook::consts::signal::*;
+use signal_hook_tokio::Signals;
 use structopt::clap::{crate_version, AppSettings};
 use structopt::StructOpt;
 use tokio::select;
@@ -151,7 +154,19 @@ pub async fn run() -> ExitCode {
 
     let addr = format!("0.0.0.0:{}", cfg.rpc_port).parse().unwrap();
     let repo = cm.get_repo().unwrap();
-    let srv = serve(addr, repo, root_logger.clone());
+
+    let mut signals = match Signals::new(&[SIGHUP, SIGTERM, SIGINT, SIGQUIT]) {
+        Ok(signals) => signals,
+        Err(e) => {
+            error!(root_logger, "Failed to register signal handler."; "error" => e.to_string());
+            return exitcode::IOERR;
+        }
+    };
+    let fut = async move {
+        signals.next().await;
+    };
+
+    let srv = serve(addr, repo, root_logger.clone(), fut);
 
     select! {
         _ = cm.start() => {

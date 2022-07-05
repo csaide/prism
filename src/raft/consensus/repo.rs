@@ -4,17 +4,18 @@
 use super::{Cluster, Frontend, Raft};
 
 #[derive(Debug)]
-pub struct Repo<P> {
+pub struct Repo<P, S> {
     raft: Raft<P>,
-    frontend: Frontend<P>,
+    frontend: Frontend<P, S>,
     cluster: Cluster<P>,
 }
 
-impl<P> Repo<P>
+impl<P, S> Repo<P, S>
 where
     P: Clone,
+    S: Clone,
 {
-    pub fn new(raft: Raft<P>, frontend: Frontend<P>, cluster: Cluster<P>) -> Repo<P> {
+    pub fn new(raft: Raft<P>, frontend: Frontend<P, S>, cluster: Cluster<P>) -> Repo<P, S> {
         Repo {
             raft,
             frontend,
@@ -25,7 +26,7 @@ where
     pub fn get_raft(&self) -> Raft<P> {
         self.raft.clone()
     }
-    pub fn get_frontend(&self) -> Frontend<P> {
+    pub fn get_frontend(&self) -> Frontend<P, S> {
         self.frontend.clone()
     }
     pub fn get_cluster(&self) -> Cluster<P> {
@@ -40,6 +41,7 @@ mod tests {
     use tokio::sync::{mpsc, watch};
 
     use crate::{
+        hash::HashState,
         log,
         raft::{Log, MockClient, State, Watcher},
     };
@@ -66,12 +68,17 @@ mod tests {
             State::<MockClient>::new(id, peers, &db).expect("Failed to create new State object."),
         );
         let watcher = Arc::new(Watcher::default());
+        let state_machine = HashState::new(&logger);
+        let state_machine = Arc::new(state_machine);
 
         let frontend = Frontend::new(
+            &logger,
             state.clone(),
             log.clone(),
             watcher.clone(),
+            commit_tx.clone(),
             submit_tx.clone(),
+            state_machine,
         );
         let cluster = Cluster::new(
             &logger,

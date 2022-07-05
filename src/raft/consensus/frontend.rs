@@ -3,10 +3,12 @@
 
 use std::sync::Arc;
 
-use tokio::sync::mpsc::Sender;
+use tokio::sync::{mpsc::Sender, watch};
+
+use crate::raft::{Client, StateMachine};
 
 use super::{
-    Command, Entry, Error, Log, MutateStateRequest, MutateStateResponse, ReadStateRequest,
+    Command, Entry, Error, Log, MutateStateRequest, MutateStateResponse, Quorum, ReadStateRequest,
     ReadStateResponse, RegisterClientRequest, RegisterClientResponse, Registration, Result, State,
     Watcher, NOT_LEADER, OK,
 };
@@ -25,25 +27,37 @@ pub trait FrontendHandler: Send + Sync + Clone + 'static {
 }
 
 #[derive(Debug, Clone)]
-pub struct Frontend<P> {
+pub struct Frontend<P, S> {
     state: Arc<State<P>>,
     log: Arc<Log>,
     watcher: Arc<Watcher>,
     submit_tx: Sender<()>,
+    quorum: Arc<Quorum<P>>,
+    state_machine: Arc<S>,
 }
 
-impl<P> Frontend<P> {
+impl<P, S> Frontend<P, S>
+where
+    P: Client + Clone,
+    S: StateMachine + 'static,
+{
     pub fn new(
+        logger: &slog::Logger,
         state: Arc<State<P>>,
         log: Arc<Log>,
         watcher: Arc<Watcher>,
+        commit_tx: Arc<watch::Sender<()>>,
         submit_tx: Sender<()>,
-    ) -> Frontend<P> {
+        state_machine: Arc<S>,
+    ) -> Frontend<P, S> {
+        let quorum = Arc::new(Quorum::new(logger, state.clone(), log.clone(), commit_tx));
         Frontend {
             state,
             log,
             watcher,
             submit_tx,
+            quorum,
+            state_machine,
         }
     }
 
@@ -69,6 +83,15 @@ impl<P> Frontend<P> {
         rx.await?;
 
         Ok(idx)
+    }
+
+    async fn submit_query(&self, query: Vec<u8>) -> Result<Vec<u8>> {
+        let _read_idx = self.state.get_commit_idx();
+
+        if self.quorum.exec().await {
+            return self.state_machine.read(query);
+        }
+        Err(Error::NoQuorum)
     }
 
     pub async fn register(&self, _: RegisterClientRequest) -> Result<RegisterClientResponse> {
@@ -115,13 +138,32 @@ impl<P> Frontend<P> {
         })
     }
 
-    pub async fn read(&self, _read_request: ReadStateRequest) -> Result<ReadStateResponse> {
-        unimplemented!()
+    pub async fn read(&self, read_request: ReadStateRequest) -> Result<ReadStateResponse> {
+        if self.state.is_dead() {
+            return Err(Error::Dead);
+        }
+        if !self.state.is_leader() {
+            return Ok(ReadStateResponse {
+                leader_hint: self.state.current_leader().unwrap_or_default(),
+                response: Vec::default(),
+                status: NOT_LEADER.to_string(),
+            });
+        }
+        let resp = self.submit_query(read_request.query).await?;
+        Ok(ReadStateResponse {
+            leader_hint: self.state.id.clone(),
+            response: resp,
+            status: OK.to_string(),
+        })
     }
 }
 
 #[tonic::async_trait]
-impl<P: Send + Sync + Clone + 'static> FrontendHandler for Frontend<P> {
+impl<P, S> FrontendHandler for Frontend<P, S>
+where
+    P: Client + Send + Sync + Clone + 'static,
+    S: StateMachine + Clone + Send + Sync + 'static,
+{
     async fn mutate_request(
         &self,
         mutate_request: MutateStateRequest,
@@ -174,14 +216,17 @@ mod tests {
     use tokio::sync::{mpsc, watch};
 
     use crate::{
-        hash::{Command, HashState},
+        hash::{Command, HashState, Query},
         log,
-        raft::{cluster::MockClient, Commiter, Mode},
+        raft::{cluster::MockClient, AppendEntriesResponse, Commiter, Mode, Peer},
     };
 
     use super::*;
 
-    fn test_setup(mode: Mode) -> (Frontend<MockClient>, Arc<State<MockClient>>) {
+    fn test_setup(
+        mode: Mode,
+        peers: HashMap<String, Peer<MockClient>>,
+    ) -> (Frontend<MockClient, HashState>, Arc<State<MockClient>>) {
         let logger = log::noop();
         let id = String::from("leader");
         let db = sled::Config::new()
@@ -189,7 +234,7 @@ mod tests {
             .open()
             .expect("Failed to open temp database.");
         let state = Arc::new(
-            State::<MockClient>::new(id.clone(), HashMap::default(), &db)
+            State::<MockClient>::new(id.clone(), peers, &db)
                 .expect("Failed to create new State object."),
         );
         state.set_mode(mode);
@@ -198,6 +243,7 @@ mod tests {
         let watcher = Arc::new(Watcher::default());
         let state_machine = Arc::new(HashState::new(&logger));
         let (commit_tx, commit_rx) = watch::channel(());
+        let commit_tx = Arc::new(commit_tx);
         let (submit_tx, mut submit_rx) = mpsc::channel(10);
 
         let mut commiter = Commiter::new(
@@ -208,7 +254,15 @@ mod tests {
             commit_rx,
             watcher.clone(),
         );
-        let frontend = Frontend::new(state.clone(), log.clone(), watcher.clone(), submit_tx);
+        let frontend = Frontend::new(
+            &logger,
+            state.clone(),
+            log.clone(),
+            watcher.clone(),
+            commit_tx.clone(),
+            submit_tx,
+            state_machine,
+        );
 
         tokio::task::spawn(async move { commiter.exec().await });
         let commit_state = state.clone();
@@ -255,7 +309,7 @@ mod tests {
         #[case] mode: Mode,
         #[case] expected: Result<RegisterClientResponse>,
     ) {
-        let (frontend, state) = test_setup(mode);
+        let (frontend, state) = test_setup(mode, HashMap::default());
         let resp = frontend.register_client(RegisterClientRequest {}).await;
         if expected.is_ok() {
             assert!(resp.is_ok());
@@ -314,7 +368,7 @@ mod tests {
         #[case] cmd: Command,
         #[case] expected: Result<MutateStateResponse>,
     ) {
-        let (frontend, state) = test_setup(mode);
+        let (frontend, state) = test_setup(mode, HashMap::default());
         let resp = frontend
             .mutate_request(MutateStateRequest {
                 client_id: Vec::default(),
@@ -329,6 +383,94 @@ mod tests {
             assert_eq!(resp.status, expected.status);
             assert_eq!(resp.leader_hint, expected.leader_hint);
             assert_eq!(resp.response, expected.response);
+        } else {
+            assert!(resp.is_err());
+        }
+        state.transition_dead();
+    }
+
+    fn mock_client_success() -> MockClient {
+        let mut mock = MockClient::default();
+        mock.expect_clone().once().returning(|| -> MockClient {
+            let mut mock = MockClient::default();
+            mock.expect_append()
+                .once()
+                .returning(|req| -> Result<AppendEntriesResponse> {
+                    Ok(AppendEntriesResponse {
+                        success: true,
+                        term: req.term,
+                    })
+                });
+            mock
+        });
+        mock
+    }
+
+    fn happy_path() -> HashMap<String, Peer<MockClient>> {
+        let mut peers = HashMap::default();
+
+        let id1 = String::from("peer1");
+        let peer1 = mock_client_success();
+        peers.insert(id1.clone(), Peer::with_client(id1, peer1));
+
+        let id2 = String::from("peer2");
+        let peer2 = mock_client_success();
+        peers.insert(id2.clone(), Peer::with_client(id2, peer2));
+
+        let id3 = String::from("leader");
+        let peer3 = MockClient::default();
+        peers.insert(id3.clone(), Peer::with_client(id3, peer3));
+        peers
+    }
+
+    #[rstest]
+    #[case::dead(
+        Mode::Dead,
+        Query {key: String::from("read")},
+        Err(Error::Dead),
+        HashMap::default(),
+    )]
+    #[case::not_leader(
+        Mode::Follower,
+        Query {key: String::from("read")},
+        Ok(ReadStateResponse {
+            response: Vec::default(),
+            leader_hint: String::default(),
+            status: NOT_LEADER.to_string(),
+        }),
+        HashMap::default(),
+    )]
+    #[case::no_quorum(
+        Mode::Leader,
+        Query {key: String::from("read")},
+        Err(Error::NoQuorum),
+        HashMap::default(),
+    )]
+    #[case::happy_path(
+        Mode::Leader,
+        Query {key: String::from("read")},
+        Ok(ReadStateResponse {
+            status: String::from("OK"),
+            response: bincode::serialize::<Option<u128>>(&None).expect("Failed to serialize"),
+            leader_hint: String::from("leader"),
+        }),
+        happy_path(),
+    )]
+    #[tokio::test]
+    async fn test_read(
+        #[case] mode: Mode,
+        #[case] query: Query,
+        #[case] expected: Result<ReadStateResponse>,
+        #[case] peers: HashMap<String, Peer<MockClient>>,
+    ) {
+        let (frontend, state) = test_setup(mode, peers);
+        let query = query.to_bytes();
+        let resp = frontend.read_request(ReadStateRequest { query }).await;
+        if expected.is_ok() {
+            assert!(resp.is_ok());
+            let resp = resp.unwrap();
+            let expected = expected.unwrap();
+            assert_eq!(resp, expected);
         } else {
             assert!(resp.is_err());
         }

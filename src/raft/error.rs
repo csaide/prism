@@ -70,6 +70,8 @@ pub enum Error {
     ),
     #[error("server has transitioned to dead")]
     Dead,
+    #[error("unable to achieve quorum")]
+    NoQuorum,
 }
 
 impl From<Error> for Status {

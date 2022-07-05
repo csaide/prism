@@ -1,11 +1,12 @@
 // (c) Copyright 2022 Christian Saide
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::future::Future;
 use std::net::SocketAddr;
 
 use tonic::transport::{Channel, Server};
 
-use crate::raft::Repo;
+use crate::{hash::HashState, raft::Repo};
 
 use super::{
     cluster, frontend, interceptor,
@@ -14,8 +15,9 @@ use super::{
 
 pub async fn serve(
     addr: SocketAddr,
-    cm: Repo<RaftClient<Channel>>,
+    cm: Repo<RaftClient<Channel>, HashState>,
     logger: slog::Logger,
+    shutdown: impl Future<Output = ()>,
 ) -> Result<(), tonic::transport::Error> {
     let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
@@ -62,6 +64,6 @@ pub async fn serve(
         ))
         .add_service(reflection)
         .add_service(health_service)
-        .serve(addr)
+        .serve_with_shutdown(addr, shutdown)
         .await
 }
