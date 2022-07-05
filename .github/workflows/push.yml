@@ -26,10 +26,12 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           override: true
           components: llvm-tools-preview
+      - name: Install llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
       - name: Cache
         uses: Swatinem/rust-cache@v1
       - name: Coverage
-        run: cargo install cargo-llvm-cov && make coverage-ci
+        run: make coverage-ci
       - name: Upload to Codecov
         uses: codecov/codecov-action@v1.0.2
         with:

@@ -13,8 +13,8 @@ env:
   TOOLCHAIN_PROFILE: minimal
 
 jobs:
-  check:
-    name: check
+  clippy_check:
+    name: clippy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -28,8 +28,28 @@ jobs:
           components: rustfmt, clippy
       - name: Cache
         uses: Swatinem/rust-cache@v1
+      - uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features
+
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: ${{ env.TOOLCHAIN_PROFILE }}
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          override: true
+          components: rustfmt
+      - name: Cache
+        uses: Swatinem/rust-cache@v1
       - name: Check
-        run: make fmt lint license
+        run: make fmt license
 
   coverage:
     name: coverage
@@ -44,10 +64,12 @@ jobs:
           toolchain: nightly
           override: true
           components: llvm-tools-preview
+      - name: Install llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
       - name: Cache
         uses: Swatinem/rust-cache@v1
       - name: Coverage
-        run: cargo install cargo-llvm-cov && make coverage-ci
+        run: make coverage-ci
       - name: Upload to Codecov
         uses: codecov/codecov-action@v1.0.2
         with:

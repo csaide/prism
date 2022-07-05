@@ -14,3 +14,6 @@ export GPG_TTY=$(tty)
 
 # Make sure we get completion.
 source /etc/bash_completion
+
+eval $(ssh-agent)
+source $HOME/.cargo/env

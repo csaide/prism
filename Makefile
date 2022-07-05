@@ -120,7 +120,7 @@ fmt:
 lint:
 	@bash ./dist/bin/print.sh "Linting"
 	@cargo fmt --all -- --check
-	@cargo clippy -- --no-deps
+	@cargo clippy --all-features --no-deps
 
 units:
 	@bash ./dist/bin/print.sh "Running tests"

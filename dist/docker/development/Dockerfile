@@ -1,35 +1,24 @@
 # (c) Copyright 2022 Christian Saide
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-FROM rust:1-bullseye as rust
+FROM ubuntu:jammy as devel
 
 # We don't want warnings for no reason
 ARG DEBIAN_FRONTEND=noninteractive
 
 # Install dev-tooling
-ENV TOOL_DEPS "curl wget telnet netcat cmake net-tools dnsutils vim-tiny bash-completion sudo jq"
-ENV COMPILER_DEPS "upx-ucl gcc-aarch64-linux-gnu"
+ENV TOOL_DEPS "curl wget telnet netcat cmake net-tools dnsutils vim-tiny bash-completion sudo jq git"
+ENV COMPILER_DEPS "upx-ucl gcc-aarch64-linux-gnu build-essential"
 RUN apt-get update \
     && apt-get upgrade -yqq \
     && apt-get install -yqq \
     ${TOOL_DEPS} ${COMPILER_DEPS} \
     && rm -rf /var/lib/apt/*
 
-# Add our rust utils and nightly toolchain.
-RUN rustup update \
-    && rustup toolchain install nightly-x86_64-unknown-linux-gnu \
-    && rustup target add x86_64-unknown-linux-gnu \
-    && rustup target add aarch64-unknown-linux-gnu \
-    && rustup component add rust-std \
-    && rustup component add rustfmt \
-    && rustup component add clippy \
-    && rustup component add rust-src \
-    && rustup component add llvm-tools-preview \
-    && rustup component add llvm-tools-preview --toolchain nightly-x86_64-unknown-linux-gnu \
-    && cargo install cargo-llvm-cov
-
 # Install rust-analyzer
-RUN curl -L https://github.com/rust-analyzer/rust-analyzer/releases/latest/download/rust-analyzer-linux -o /usr/bin/rust-analyzer \
+ENV RUST_ANALYZER_VERSION "2022-07-04"
+RUN curl -L https://github.com/rust-lang/rust-analyzer/releases/download/${RUST_ANALYZER_VERSION}/rust-analyzer-x86_64-unknown-linux-gnu.gz -o /usr/bin/rust-analyzer.gz \
+    && gunzip /usr/bin/rust-analyzer.gz \
     && chmod +x /usr/bin/rust-analyzer
 
 # Install dive
@@ -68,10 +57,25 @@ RUN apt-get update \
 ARG uid=1000
 RUN useradd -s /bin/bash -d /home/code -u ${uid} -U -G sudo,docker code \
     && mkdir -p /home/code /opt/prism \
-    && chown -R code:code /home/code /usr/local/cargo /opt/prism \
+    && chown -R code:code /home/code /opt/prism \
     && echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
 # Copy in a custom bashrc with util functions.
 COPY --chown=code:code dist/docker/development/.bashrc /home/code/
+
+USER code
+ENV COMPONENTS "rust-std,rustfmt,clippy,rust-src,llvm-tools-preview"
+ENV TARGETS "x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu"
+# Add our rust utils and nightly toolchain.
+RUN curl -o /home/code/install-rustup.sh --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    && sh /home/code/install-rustup.sh -y -q \
+    -c ${COMPONENTS} -t ${TARGETS} \
+    && . /home/code/.cargo/env \
+    && rustup update \
+    && rustup toolchain install nightly-x86_64-unknown-linux-gnu \
+    && rustup component add llvm-tools-preview --toolchain nightly-x86_64-unknown-linux-gnu \
+    && cargo install cargo-llvm-cov \
+    && rm /home/code/install-rustup.sh
+
 
 WORKDIR /opt/prism
