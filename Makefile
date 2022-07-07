@@ -90,11 +90,11 @@ HASH ?= $(shell git rev-parse HEAD)
 docker:
 	@bash ./dist/bin/print.sh "Building image"
 	@docker buildx build \
-		--platform linux/arm64,linux/amd64 \
+		--platform linux/amd64 \
 		--tag ghcr.io/csaide/prism:$(HASH) \
 		--build-arg BUILD=release \
 		--file ./dist/docker/prism/Dockerfile \
-		--push \
+		--load \
 		.
 
 promote:
@@ -106,6 +106,14 @@ promote:
 		--file ./dist/docker/prism/Dockerfile.promote \
 		--push \
 		.
+
+compose-up:
+	@bash ./dist/bin/print.sh "Staring cluster"
+	@docker-compose -p prism -f ./dist/docker/docker-compose.yaml up
+
+compose-down:
+	@bash ./dist/bin/print.sh "Staring cluster"
+	@docker-compose -p prism -f ./dist/docker/docker-compose.yaml down -v
 
 ###
 # Source code validation, formatting, linting.

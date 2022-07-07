@@ -40,6 +40,11 @@ RUN curl -L https://github.com/grpc-ecosystem/grpc-health-probe/releases/downloa
     && chmod +x grpc_health_probe \
     && mv grpc_health_probe /usr/bin
 
+# Install docker-compose
+ENV DOCKER_COMPOSE_VERSION "v2.6.1"
+RUN curl -L https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-x86_64 -o /usr/bin/docker-compose \
+    && chmod +x /usr/bin/docker-compose
+
 # Install docker cli
 ARG docker_gid=968
 ENV DOCKER_DEPS "apt-transport-https ca-certificates curl gnupg2 software-properties-common"

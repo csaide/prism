@@ -71,6 +71,14 @@ struct PrismdConfig {
         takes_value = true
     )]
     join: Option<String>,
+    #[structopt(
+        long = "local-host",
+        short = "a",
+        env = "PRISM_LOCAL_HOST",
+        help = "The hostname of this peer.",
+        takes_value = true
+    )]
+    local_host: Option<String>,
 }
 
 pub async fn run(args: Vec<OsString>) -> ExitCode {
@@ -106,9 +114,15 @@ pub async fn run(args: Vec<OsString>) -> ExitCode {
         }
     }
 
+    let id = format!(
+        "grpc://{}:{}",
+        cfg.local_host.unwrap_or_else(|| String::from("127.0.0.1")),
+        cfg.rpc_port
+    );
+
     if let Some(join) = cfg.join {
         let join_logger = root_logger.clone();
-        let port = cfg.rpc_port;
+        let member = id.clone();
         tokio::task::spawn(async move {
             let mut ticker = interval(Duration::from_millis(100));
             loop {
@@ -121,7 +135,7 @@ pub async fn run(args: Vec<OsString>) -> ExitCode {
                     }
                 };
                 let req = AddRequest {
-                    member: format!("grpc://127.0.0.1:{}", port),
+                    member: member.clone(),
                     replica: false,
                 };
                 match client.add(req).await {
@@ -137,13 +151,7 @@ pub async fn run(args: Vec<OsString>) -> ExitCode {
         });
     }
 
-    let mut cm = match Module::new(
-        format!("grpc://127.0.0.1:{}", cfg.rpc_port),
-        peers,
-        &root_logger,
-        &db,
-        sm,
-    ) {
+    let mut cm = match Module::new(id, peers, &root_logger, &db, sm) {
         Ok(cm) => cm,
         Err(e) => {
             error!(root_logger, "Failed to create internal consensus module."; "error" => e.to_string());

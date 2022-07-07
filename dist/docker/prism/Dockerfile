@@ -37,13 +37,14 @@ ARG BUILD=debug
 
 RUN --mount=type=cache,target=/root/.cargo \
     --mount=type=cache,sharing=private,target=/opt/prism/target \
-    make BUILD=${BUILD} BUILD_ARCH=${TARGETARCH} compile
+    make BUILD=${BUILD} BUILD_ARCH=${TARGETARCH} compile && mkdir -p /var/lib/prism
 
 FROM --platform=${TARGETPLATFORM} gcr.io/distroless/static:latest AS runtime
 
 ARG TARGETARCH
 ARG BUILD=debug
 
+COPY --from=build --chown=nonroot:nonroot --chmod=0700 /var/lib/prism /var/lib/prism
 COPY --from=build --chown=nonroot:nonroot --chmod=0700 /opt/prism/grpc_health_probe /bin/grpc_health_probe
 COPY --from=build --chown=nonroot:nonroot --chmod=0700 /opt/prism/output/${BUILD}/prismd_linux-${TARGETARCH} /bin/prismd
 COPY --from=build --chown=nonroot:nonroot --chmod=0700 /opt/prism/output/${BUILD}/prismctl_linux-${TARGETARCH} /bin/prismctl
