@@ -89,7 +89,7 @@ enum Command {
 }
 
 pub async fn run(args: Vec<OsString>) -> ExitCode {
-    let cfg = match crate::base_config::<PrismctlConfig>(args, PRISMCTL) {
+    let cfg = match crate::base::config::<PrismctlConfig>(args, PRISMCTL) {
         Ok(cfg) => cfg,
         Err((code, _)) if code == exitcode::CONFIG => return code,
         Err((code, msg)) => {

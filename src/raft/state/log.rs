@@ -62,13 +62,7 @@ impl Log {
     }
 
     pub fn idx_and_term_match(&self, idx: u128, term: u128) -> Result<bool> {
-        let entry = self.get(idx)?;
-        use Entry::*;
-        match entry {
-            Command(cmd) => Ok(cmd.term == term),
-            ClusterConfig(cfg) => Ok(cfg.term == term),
-            Registration(reg) => Ok(reg.term == term),
-        }
+        self.get(idx).map(|entry| entry.term() == term)
     }
 
     pub fn get(&self, idx: u128) -> Result<Entry> {

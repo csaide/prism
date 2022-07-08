@@ -82,7 +82,7 @@ struct PrismdConfig {
 }
 
 pub async fn run(args: Vec<OsString>) -> ExitCode {
-    let cfg = match crate::base_config::<PrismdConfig>(args, PRISMD) {
+    let cfg = match crate::base::config::<PrismdConfig>(args, PRISMD) {
         Ok(cfg) => cfg,
         Err((code, _)) if code == exitcode::CONFIG => return code,
         Err((code, msg)) => {

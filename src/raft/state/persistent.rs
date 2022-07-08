@@ -16,9 +16,7 @@ impl PersistentState {
 
     pub fn get_voted_for(&self) -> Result<Option<String>> {
         match self.tree.get("voted_for")? {
-            Some(ivec) => {
-                Ok(bincode::deserialize(&ivec).map_err(|e| Error::Serialize(e.to_string()))?)
-            }
+            Some(ivec) => bincode::deserialize(&ivec).map_err(|e| Error::Serialize(e.to_string())),
             None => Ok(None),
         }
     }
@@ -48,8 +46,10 @@ impl PersistentState {
     }
 
     pub fn set_current_term(&self, term: u128) -> Result<()> {
-        self.tree.insert("current_term", &term.to_be_bytes())?;
-        Ok(())
+        self.tree
+            .insert("current_term", &term.to_be_bytes())
+            .map(|_| ())
+            .map_err(Error::from)
     }
 
     pub fn incr_current_term(&self) -> Result<u128> {
