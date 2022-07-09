@@ -3,7 +3,7 @@
 
 use std::{array::TryFromSliceError, result};
 
-use sled::CompareAndSwapError;
+use sled::{transaction::TransactionError, CompareAndSwapError};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
 use tonic::Status;
@@ -48,6 +48,12 @@ pub enum Error {
         #[from]
         sled::Error,
     ),
+    #[error("sled transaction error: {0}")]
+    Transaction(
+        #[source]
+        #[from]
+        sled::transaction::TransactionError,
+    ),
     #[error("internal cast error: {0}")]
     Cast(
         #[source]
@@ -80,6 +86,12 @@ impl From<Error> for Status {
             Error::Rpc(status) => status,
             _ => Status::internal(input.to_string()),
         }
+    }
+}
+
+impl From<TransactionError<Error>> for Error {
+    fn from(t: TransactionError<Error>) -> Self {
+        t.into()
     }
 }
 

@@ -31,12 +31,7 @@ impl Log {
         };
 
         let idx = idx.as_ref().try_into().map(u128::from_be_bytes)?;
-        use Entry::*;
-        match Entry::from_ivec(entry)? {
-            Command(cmd) => Ok((idx, cmd.term)),
-            ClusterConfig(cfg) => Ok((idx, cfg.term)),
-            Registration(reg) => Ok((idx, reg.term)),
-        }
+        Ok((idx, Entry::from_ivec(entry)?.term()))
     }
 
     pub fn append(&self, entry: Entry) -> Result<u128> {
@@ -133,6 +128,7 @@ impl Log {
             self.insert(log_insert_index, entry)?;
             log_insert_index += 1;
         }
+
         Ok(res)
     }
 

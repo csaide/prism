@@ -4,6 +4,7 @@
 mod cluster;
 mod consensus;
 mod error;
+pub mod log;
 mod models;
 mod state;
 mod state_machine;
