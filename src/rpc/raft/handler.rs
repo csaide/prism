@@ -85,10 +85,10 @@ mod tests {
         let inner = AppendRequest {
             leader_id: String::from("leader"),
             entries: Vec::default(),
-            leader_commit_idx: 1u128.to_be_bytes().to_vec(),
-            prev_log_idx: 1u128.to_be_bytes().to_vec(),
-            prev_log_term: 1u128.to_be_bytes().to_vec(),
-            term: 1u128.to_be_bytes().to_vec(),
+            leader_commit_idx: 1u64,
+            prev_log_idx: 1u64,
+            prev_log_term: 1u64,
+            term: 1u64,
         };
 
         mock.expect_append_entries()
@@ -107,7 +107,7 @@ mod tests {
         let result = wait(srv.append_entries(req)).expect("should not have returned an error.");
         let result = result.into_inner();
         assert!(result.success);
-        assert_eq!(result.term, 1u128.to_be_bytes().to_vec());
+        assert_eq!(result.term, 1u64);
     }
 
     #[test]
@@ -116,9 +116,9 @@ mod tests {
 
         let inner = VoteRequest {
             candidate_id: String::from("leader"),
-            last_log_idx: 1u128.to_be_bytes().to_vec(),
-            last_log_term: 1u128.to_be_bytes().to_vec(),
-            term: 1u128.to_be_bytes().to_vec(),
+            last_log_idx: 1u64,
+            last_log_term: 1u64,
+            term: 1u64,
         };
 
         mock.expect_vote_request()
@@ -137,6 +137,6 @@ mod tests {
         let result = wait(srv.request_vote(req)).expect("should not have returned an error.");
         let result = result.into_inner();
         assert!(result.vote_granted);
-        assert_eq!(result.term, 1u128.to_be_bytes().to_vec())
+        assert_eq!(result.term, 1u64)
     }
 }

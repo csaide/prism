@@ -44,7 +44,7 @@ where
         let (last_log_idx, _) = match self.log.last_log_idx_and_term() {
             Ok(tuple) => tuple,
             Err(e) => {
-                error!(self.logger, "Failed to retrieve last log u128."; "error" => e.to_string());
+                error!(self.logger, "Failed to retrieve last log u64."; "error" => e.to_string());
                 return;
             }
         };

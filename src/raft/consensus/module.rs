@@ -109,7 +109,7 @@ where
         self.state.is_leader()
     }
 
-    pub fn dump(&self) -> Result<Vec<Entry>> {
+    pub fn dump(&self) -> impl DoubleEndedIterator<Item = Result<Entry>> {
         self.log.dump()
     }
 
@@ -122,7 +122,7 @@ where
         self.follower.exec().await
     }
 
-    async fn candidate_loop(&self, saved_term: u128) -> ElectionResult {
+    async fn candidate_loop(&self, saved_term: u64) -> ElectionResult {
         debug!(self.logger, "Started candidate loop!");
         self.candidate.exec(saved_term).await
     }
@@ -285,7 +285,10 @@ mod tests {
             module.append_peer(id, peer);
         }
 
-        let dump = module.dump().expect("Failed to dump empty log.");
+        let dump: Vec<Entry> = module
+            .dump()
+            .map(|entry| entry.expect("Failed to dump empty log."))
+            .collect();
         assert_eq!(dump.len(), 0);
 
         assert!(!module.is_leader());

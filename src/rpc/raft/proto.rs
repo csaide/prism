@@ -37,40 +37,17 @@ impl From<entry::Payload> for raft::Entry {
     fn from(input: entry::Payload) -> Self {
         use entry::Payload::*;
         match input {
-            Command(cmd) => {
-                let term = cmd
-                    .term
-                    .as_slice()
-                    .try_into()
-                    .map(u128::from_be_bytes)
-                    .unwrap_or(0);
-                raft::Entry::Command(raft::Command {
-                    term,
-                    data: cmd.data,
-                })
-            }
-            Config(cfg) => {
-                let term = cfg
-                    .term
-                    .as_slice()
-                    .try_into()
-                    .map(u128::from_be_bytes)
-                    .unwrap_or(0);
-                raft::Entry::ClusterConfig(raft::ClusterConfig {
-                    term,
-                    replicas: cfg.replicas,
-                    voters: cfg.voters,
-                })
-            }
-            Registration(reg) => {
-                let term = reg
-                    .term
-                    .as_slice()
-                    .try_into()
-                    .map(u128::from_be_bytes)
-                    .unwrap_or(0);
-                raft::Entry::Registration(raft::Registration { term })
-            }
+            Command(cmd) => raft::Entry::Command(raft::Command {
+                term: cmd.term,
+                data: cmd.data,
+            }),
+            Config(cfg) => raft::Entry::ClusterConfig(raft::ClusterConfig {
+                term: cfg.term,
+                replicas: cfg.replicas,
+                voters: cfg.voters,
+            }),
+            Registration(reg) => raft::Entry::Registration(reg.term),
+            Noop(noop) => raft::Entry::Noop(noop.term),
         }
     }
 }
@@ -80,16 +57,16 @@ impl From<raft::Entry> for entry::Payload {
         match input {
             raft::Entry::Command(cmd) => entry::Payload::Command(Command {
                 data: cmd.data,
-                term: cmd.term.to_be_bytes().to_vec(),
+                term: cmd.term,
             }),
             raft::Entry::ClusterConfig(cfg) => entry::Payload::Config(ClusterConfig {
-                term: cfg.term.to_be_bytes().to_vec(),
+                term: cfg.term,
                 replicas: cfg.replicas,
                 voters: cfg.voters,
             }),
-            raft::Entry::Registration(reg) => entry::Payload::Registration(Registration {
-                term: reg.term.to_be_bytes().to_vec(),
-            }),
+            raft::Entry::Registration(term) => entry::Payload::Registration(Registration { term }),
+            raft::Entry::Noop(term) => entry::Payload::Noop(Noop { term }),
+            raft::Entry::None => unreachable!(),
         }
     }
 }
@@ -114,37 +91,13 @@ impl From<raft::Entry> for Entry {
 
 impl From<AppendRequest> for AppendEntriesRequest {
     fn from(mut input: AppendRequest) -> Self {
-        let term = input
-            .term
-            .as_slice()
-            .try_into()
-            .map(u128::from_be_bytes)
-            .unwrap_or(0);
-        let leader_commit_idx = input
-            .leader_commit_idx
-            .as_slice()
-            .try_into()
-            .map(u128::from_be_bytes)
-            .unwrap_or(0);
-        let prev_log_idx = input
-            .prev_log_idx
-            .as_slice()
-            .try_into()
-            .map(u128::from_be_bytes)
-            .unwrap_or(0);
-        let prev_log_term = input
-            .prev_log_term
-            .as_slice()
-            .try_into()
-            .map(u128::from_be_bytes)
-            .unwrap_or(0);
         let entries = input.entries.drain(..).map(raft::Entry::from).collect();
 
         AppendEntriesRequest {
-            term,
-            leader_commit_idx,
-            prev_log_idx,
-            prev_log_term,
+            term: input.term,
+            leader_commit_idx: input.leader_commit_idx,
+            prev_log_idx: input.prev_log_idx,
+            prev_log_term: input.prev_log_term,
             leader_id: input.leader_id,
             entries,
         }
@@ -157,10 +110,10 @@ impl From<AppendEntriesRequest> for AppendRequest {
 
         AppendRequest {
             leader_id: input.leader_id,
-            term: input.term.to_be_bytes().to_vec(),
-            leader_commit_idx: input.leader_commit_idx.to_be_bytes().to_vec(),
-            prev_log_idx: input.prev_log_idx.to_be_bytes().to_vec(),
-            prev_log_term: input.prev_log_term.to_be_bytes().to_vec(),
+            term: input.term,
+            leader_commit_idx: input.leader_commit_idx,
+            prev_log_idx: input.prev_log_idx,
+            prev_log_term: input.prev_log_term,
             entries,
         }
     }
@@ -168,14 +121,8 @@ impl From<AppendEntriesRequest> for AppendRequest {
 
 impl From<AppendResponse> for AppendEntriesResponse {
     fn from(input: AppendResponse) -> Self {
-        let term = input
-            .term
-            .as_slice()
-            .try_into()
-            .map(u128::from_be_bytes)
-            .unwrap_or(0);
         AppendEntriesResponse {
-            term,
+            term: input.term,
             success: input.success,
         }
     }
@@ -184,7 +131,7 @@ impl From<AppendResponse> for AppendEntriesResponse {
 impl From<AppendEntriesResponse> for AppendResponse {
     fn from(input: AppendEntriesResponse) -> Self {
         AppendResponse {
-            term: input.term.to_be_bytes().to_vec(),
+            term: input.term,
             success: input.success,
         }
     }
@@ -192,30 +139,11 @@ impl From<AppendEntriesResponse> for AppendResponse {
 
 impl From<VoteRequest> for RequestVoteRequest {
     fn from(input: VoteRequest) -> Self {
-        let term = input
-            .term
-            .as_slice()
-            .try_into()
-            .map(u128::from_be_bytes)
-            .unwrap_or(0);
-        let last_log_idx = input
-            .last_log_idx
-            .as_slice()
-            .try_into()
-            .map(u128::from_be_bytes)
-            .unwrap_or(0);
-        let last_log_term = input
-            .last_log_term
-            .as_slice()
-            .try_into()
-            .map(u128::from_be_bytes)
-            .unwrap_or(0);
-
         RequestVoteRequest {
             candidate_id: input.candidate_id,
-            last_log_idx,
-            last_log_term,
-            term,
+            last_log_idx: input.last_log_idx,
+            last_log_term: input.last_log_term,
+            term: input.term,
         }
     }
 }
@@ -224,23 +152,17 @@ impl From<RequestVoteRequest> for VoteRequest {
     fn from(input: RequestVoteRequest) -> Self {
         VoteRequest {
             candidate_id: input.candidate_id,
-            last_log_idx: input.last_log_idx.to_be_bytes().to_vec(),
-            last_log_term: input.last_log_term.to_be_bytes().to_vec(),
-            term: input.term.to_be_bytes().to_vec(),
+            last_log_idx: input.last_log_idx,
+            last_log_term: input.last_log_term,
+            term: input.term,
         }
     }
 }
 
 impl From<VoteResponse> for RequestVoteResponse {
     fn from(input: VoteResponse) -> Self {
-        let term = input
-            .term
-            .as_slice()
-            .try_into()
-            .map(u128::from_be_bytes)
-            .unwrap_or(0);
         RequestVoteResponse {
-            term,
+            term: input.term,
             vote_granted: input.vote_granted,
         }
     }
@@ -249,7 +171,7 @@ impl From<VoteResponse> for RequestVoteResponse {
 impl From<RequestVoteResponse> for VoteResponse {
     fn from(input: RequestVoteResponse) -> Self {
         VoteResponse {
-            term: input.term.to_be_bytes().to_vec(),
+            term: input.term,
             vote_granted: input.vote_granted,
         }
     }
@@ -267,63 +189,37 @@ mod tests {
         #[rstest]
         #[case::command(
             entry::Payload::Command(Command{
-                term: 1u128.to_be_bytes().to_vec(),
+                term: 1u64,
                 data: vec![0x00],
             }),
             raft::Entry::Command(raft::Command{
                 term: 1,
-                data: vec![0x00]
-            }),
-        )]
-        #[case::command_invalid_term(
-            entry::Payload::Command(Command{
-                term: vec![0x00, 0x00],
-                data: vec![0x00],
-            }),
-            raft::Entry::Command(raft::Command{
-                term: 0,
                 data: vec![0x00]
             }),
         )]
         #[case::config(
             entry::Payload::Config(ClusterConfig{
-                term: 1u128.to_be_bytes().to_vec(),
+                term: 1u64,
                 replicas: vec![String::from("hello"), String::from("noop")],
                 voters: vec![String::from("hello"), String::from("noop")],
             }),
             raft::Entry::ClusterConfig(raft::ClusterConfig{
                 term: 1,
-                replicas: vec![String::from("hello"), String::from("noop")],
-                voters: vec![String::from("hello"), String::from("noop")],
-            }),
-        )]
-        #[case::config_invalid_term(
-            entry::Payload::Config(ClusterConfig{
-                term: vec![0x00,0x00],
-                replicas: vec![String::from("hello"), String::from("noop")],
-                voters: vec![String::from("hello"), String::from("noop")],
-            }),
-            raft::Entry::ClusterConfig(raft::ClusterConfig{
-                term: 0,
                 replicas: vec![String::from("hello"), String::from("noop")],
                 voters: vec![String::from("hello"), String::from("noop")],
             }),
         )]
         #[case::registration(
             entry::Payload::Registration(Registration {
-                term: 1u128.to_be_bytes().to_vec(),
+                term: 1u64,
             }),
-            raft::Entry::Registration(raft::Registration {
-                term: 1,
-            })
+            raft::Entry::Registration(1)
         )]
-        #[case::registration_invalid_term(
-            entry::Payload::Registration(Registration {
-                term: vec![0x00, 0x00],
+        #[case::noop(
+            entry::Payload::Noop(Noop {
+                term: 1u64,
             }),
-            raft::Entry::Registration(raft::Registration {
-                term: 0,
-            })
+            raft::Entry::Noop(1)
         )]
         fn test_raft_entry_from_entry_payload(
             #[case] payload: entry::Payload,
@@ -341,7 +237,7 @@ mod tests {
             }),
             entry::Payload::Command(Command {
                 data: vec!{0x00},
-                term: 1u128.to_be_bytes().to_vec(),
+                term: 1u64,
             })
         )]
         #[case::conig(
@@ -361,15 +257,26 @@ mod tests {
                     String::from("vote2"),
                     String::from("vote3"),
                 ],
-                term: 1u128.to_be_bytes().to_vec(),
+                term: 1u64,
             })
         )]
         #[case::registration(
-            raft::Entry::Registration(raft::Registration{
-                term: 1,
-            }),
+            raft::Entry::Registration(1),
             entry::Payload::Registration(Registration {
-                term: 1u128.to_be_bytes().to_vec(),
+                term: 1u64,
+            })
+        )]
+        #[case::noop(
+            raft::Entry::Noop(1),
+            entry::Payload::Noop(Noop {
+                term: 1u64,
+            })
+        )]
+        #[should_panic]
+        #[case::none(
+            raft::Entry::None,
+            entry::Payload::Noop(Noop {
+                term: 1u64,
             })
         )]
         fn test_entry_payload_from_raft_entry(
@@ -384,7 +291,7 @@ mod tests {
         #[case::some(
             Entry {
                 payload: Some(entry::Payload::Command(Command{
-                    term: 1u128.to_be_bytes().to_vec(),
+                    term: 1u64,
                     data: vec![0x00],
                 })),
             },
@@ -410,7 +317,7 @@ mod tests {
         fn test_entry_from_raft_entry() {
             let expected = Entry {
                 payload: Some(entry::Payload::Command(Command {
-                    term: 1u128.to_be_bytes().to_vec(),
+                    term: 1u64,
                     data: vec![0x00],
                 })),
             };
@@ -437,11 +344,11 @@ mod tests {
                 term: 1,
             };
             let expected = AppendRequest {
-                term: 1u128.to_be_bytes().to_vec(),
+                term: 1u64,
                 leader_id: String::from("leader"),
-                leader_commit_idx: 1u128.to_be_bytes().to_vec(),
-                prev_log_idx: 1u128.to_be_bytes().to_vec(),
-                prev_log_term: 1u128.to_be_bytes().to_vec(),
+                leader_commit_idx: 1u64,
+                prev_log_idx: 1u64,
+                prev_log_term: 1u64,
                 entries: Vec::default(),
             };
             let actual = AppendRequest::from(append);
@@ -451,11 +358,11 @@ mod tests {
         #[rstest]
         #[case::happy_path(
             AppendRequest {
-                term: 1u128.to_be_bytes().to_vec(),
+                term: 1u64,
                 leader_id: String::from("leader"),
-                leader_commit_idx: 1u128.to_be_bytes().to_vec(),
-                prev_log_idx: 1u128.to_be_bytes().to_vec(),
-                prev_log_term: 1u128.to_be_bytes().to_vec(),
+                leader_commit_idx: 1u64,
+                prev_log_idx: 1u64,
+                prev_log_term: 1u64,
                 entries: Vec::default(),
             },
             AppendEntriesRequest {
@@ -465,24 +372,6 @@ mod tests {
                 prev_log_idx: 1,
                 prev_log_term: 1,
                 term: 1,
-            }
-        )]
-        #[case::happy_path(
-            AppendRequest {
-                entries: Vec::default(),
-                leader_id: String::from("leader"),
-                leader_commit_idx: vec![0x00],
-                prev_log_idx: vec![0x00],
-                prev_log_term: vec![0x00],
-                term: vec![0x00],
-            },
-            AppendEntriesRequest {
-                entries: Vec::default(),
-                leader_id: String::from("leader"),
-                leader_commit_idx: 0,
-                prev_log_idx: 0,
-                prev_log_term: 0,
-                term: 0,
             }
         )]
         fn test_append_to_raft_append(
@@ -501,7 +390,7 @@ mod tests {
             };
             let expected = AppendResponse {
                 success: true,
-                term: 1u128.to_be_bytes().to_vec(),
+                term: 1u64,
             };
             let actual = AppendResponse::from(resp);
             assert_eq!(actual, expected);
@@ -511,21 +400,11 @@ mod tests {
         #[case::happy_path(
             AppendResponse {
                 success: true,
-                term: 1u128.to_be_bytes().to_vec(),
+                term: 1u64,
             },
             AppendEntriesResponse {
                 success: true,
                 term: 1,
-            }
-        )]
-        #[case::invalid(
-            AppendResponse {
-                success: true,
-                term: vec![0x00],
-            },
-            AppendEntriesResponse {
-                success: true,
-                term: 0,
             }
         )]
         fn test_append_resp_to_raft_append_resp(
@@ -550,9 +429,9 @@ mod tests {
             };
             let expected = VoteRequest {
                 candidate_id: String::from("leader"),
-                last_log_idx: 1u128.to_be_bytes().to_vec(),
-                last_log_term: 1u128.to_be_bytes().to_vec(),
-                term: 1u128.to_be_bytes().to_vec(),
+                last_log_idx: 1u64,
+                last_log_term: 1u64,
+                term: 1u64,
             };
             let actual = VoteRequest::from(vote);
             assert_eq!(actual, expected);
@@ -562,29 +441,15 @@ mod tests {
         #[case::happy_path(
             VoteRequest {
                 candidate_id: String::from("leader"),
-                last_log_idx: 1u128.to_be_bytes().to_vec(),
-                last_log_term: 1u128.to_be_bytes().to_vec(),
-                term: 1u128.to_be_bytes().to_vec(),
+                last_log_idx: 1u64,
+                last_log_term: 1u64,
+                term: 1u64,
             },
             RequestVoteRequest {
                 candidate_id: String::from("leader"),
                 last_log_idx: 1,
                 last_log_term: 1,
                 term: 1,
-            }
-        )]
-        #[case::invalid(
-            VoteRequest {
-                candidate_id: String::from("leader"),
-                last_log_idx: vec![0x00],
-                last_log_term: vec![0x00],
-                term: vec![0x00],
-            },
-            RequestVoteRequest {
-                candidate_id: String::from("leader"),
-                last_log_idx: 0,
-                last_log_term: 0,
-                term: 0,
             }
         )]
         fn test_vote_to_raft_vote(#[case] vote: VoteRequest, #[case] expected: RequestVoteRequest) {
@@ -599,7 +464,7 @@ mod tests {
                 vote_granted: true,
             };
             let expected = VoteResponse {
-                term: 1u128.to_be_bytes().to_vec(),
+                term: 1u64,
                 vote_granted: true,
             };
             let actual = VoteResponse::from(resp);
@@ -609,21 +474,11 @@ mod tests {
         #[rstest]
         #[case::happy_path(
             VoteResponse {
-                term: 1u128.to_be_bytes().to_vec(),
+                term: 1u64,
                 vote_granted: true,
             },
             RequestVoteResponse {
                 term: 1,
-                vote_granted: true,
-            }
-        )]
-        #[case::invalid(
-            VoteResponse {
-                term: vec![0x00],
-                vote_granted: true,
-            },
-            RequestVoteResponse {
-                term: 0,
                 vote_granted: true,
             }
         )]

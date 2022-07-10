@@ -27,8 +27,9 @@ pub struct ClusterConfig {
 }
 
 /// An [Entry] represents a single log entry in a given cluster members persistent log.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd)]
 pub enum Entry {
+    #[default]
     None,
     Command(Command),
     ClusterConfig(ClusterConfig),
@@ -36,20 +37,15 @@ pub enum Entry {
     Noop(u64),
 }
 
-impl Default for Entry {
-    fn default() -> Self {
-        Entry::Command(Command::default())
-    }
-}
-
 impl Entry {
     pub fn term(&self) -> u64 {
+        use Entry::*;
         match self {
-            Entry::None => panic!("called term on None entry"),
-            Entry::Command(cmd) => cmd.term,
-            Entry::ClusterConfig(cfg) => cfg.term,
-            Entry::Registration(term) => *term,
-            Entry::Noop(term) => *term,
+            None => panic!("called term on None entry"),
+            Command(cmd) => cmd.term,
+            ClusterConfig(cfg) => cfg.term,
+            Registration(term) => *term,
+            Noop(term) => *term,
         }
     }
 
@@ -61,10 +57,11 @@ impl Entry {
         matches!(self, Entry::ClusterConfig(..))
     }
 
-    pub fn unwrap_cluster_config(&self) -> ClusterConfig {
-        match self {
-            Entry::ClusterConfig(cfg) => cfg.clone(),
-            _ => panic!("called unwrap_cluster_config on non-ClusterConfig type"),
+    pub fn unwrap_cluster_config(&mut self) -> ClusterConfig {
+        use Entry::*;
+        match std::mem::take(self) {
+            ClusterConfig(cfg) => cfg,
+            _ => panic!("called unwrap_cluster_config on non-cluster-config"),
         }
     }
 
@@ -72,9 +69,10 @@ impl Entry {
         matches!(self, Entry::Command(..))
     }
 
-    pub fn unwrap_command(&self) -> Command {
-        match self {
-            Entry::Command(cmd) => cmd.clone(),
+    pub fn unwrap_command(&mut self) -> Command {
+        use Entry::*;
+        match std::mem::take(self) {
+            Command(cmd) => cmd,
             _ => panic!("called unwrap_cluster_config on non=Command type"),
         }
     }
@@ -83,9 +81,10 @@ impl Entry {
         matches!(self, Entry::Registration(..))
     }
 
-    pub fn unwrap_registration(&self) -> u64 {
-        match self {
-            Entry::Registration(term) => *term,
+    pub fn unwrap_registration(&mut self) -> u64 {
+        use Entry::*;
+        match std::mem::take(self) {
+            Registration(term) => term,
             _ => panic!("called unwrap_cluster_config on non-Registration type"),
         }
     }
@@ -94,9 +93,10 @@ impl Entry {
         matches!(self, Entry::Noop(_))
     }
 
-    pub fn unwrap_noop(&self) -> u64 {
-        match self {
-            Entry::Noop(term) => *term,
+    pub fn unwrap_noop(&mut self) -> u64 {
+        use Entry::*;
+        match std::mem::take(self) {
+            Noop(term) => term,
             _ => panic!("called unwrap_noop on non-Noop type"),
         }
     }
@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn test_entry_command() {
         let expected = Command::default();
-        let entry = Entry::Command(expected.clone());
+        let mut entry = Entry::Command(expected.clone());
 
         assert!(entry.is_command());
         assert!(!entry.is_cluster_config());
@@ -183,7 +183,7 @@ mod tests {
     #[test]
     fn test_entry_config() {
         let expected = ClusterConfig::default();
-        let entry = Entry::ClusterConfig(expected.clone());
+        let mut entry = Entry::ClusterConfig(expected.clone());
 
         assert!(!entry.is_command());
         assert!(entry.is_cluster_config());
@@ -198,7 +198,7 @@ mod tests {
     #[test]
     fn test_entry_registration() {
         let expected = 1;
-        let entry = Entry::Registration(expected);
+        let mut entry = Entry::Registration(expected);
 
         assert!(!entry.is_command());
         assert!(!entry.is_cluster_config());
@@ -213,7 +213,7 @@ mod tests {
     #[test]
     fn test_entry_noop() {
         let expected = 1;
-        let entry = Entry::Noop(expected);
+        let mut entry = Entry::Noop(expected);
 
         assert!(!entry.is_command());
         assert!(!entry.is_cluster_config());
@@ -228,28 +228,28 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_unwrap_command_panic() {
-        let entry = Entry::Registration(1);
+        let mut entry = Entry::Registration(1);
         entry.unwrap_command();
     }
 
     #[test]
     #[should_panic]
     fn test_unwrap_config_panic() {
-        let entry = Entry::Registration(1);
+        let mut entry = Entry::Registration(1);
         entry.unwrap_cluster_config();
     }
 
     #[test]
     #[should_panic]
     fn test_unwrap_registration_panic() {
-        let entry = Entry::Command(Command::default());
+        let mut entry = Entry::Command(Command::default());
         entry.unwrap_registration();
     }
 
     #[test]
     #[should_panic]
     fn test_unwrap_noop_panic() {
-        let entry = Entry::Registration(1);
+        let mut entry = Entry::Registration(1);
         entry.unwrap_noop();
     }
 

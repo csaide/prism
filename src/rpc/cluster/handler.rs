@@ -153,6 +153,6 @@ mod tests {
         let result = wait(srv.list(req)).expect("Should not have returned an error.");
         let result = result.into_inner();
         assert_eq!(result.leader, "leader");
-        assert_eq!(result.term, 1u128.to_be_bytes().to_vec());
+        assert_eq!(result.term, 1u64);
     }
 }

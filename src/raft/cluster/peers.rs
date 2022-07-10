@@ -98,7 +98,7 @@ where
         self.voters.remove(id);
     }
 
-    pub fn idx_matches(&self, idx: u128) -> bool {
+    pub fn idx_matches(&self, idx: u64) -> bool {
         let mut matches = 1;
         for (_, peer) in self.voters.iter().filter(|(id, _)| *id != &self.id) {
             if peer.match_idx >= idx {
@@ -108,13 +108,13 @@ where
         matches > (self.voters.len() - 1) / 2
     }
 
-    pub fn reset(&mut self, last_log_idx: u128) {
+    pub fn reset(&mut self, last_log_idx: u64) {
         self.voters
             .iter_mut()
             .for_each(|(_, peer)| peer.reset(last_log_idx))
     }
 
-    pub fn to_cluster_config(&self, term: u128) -> ClusterConfig {
+    pub fn to_cluster_config(&self, term: u64) -> ClusterConfig {
         ClusterConfig {
             term,
             voters: self.voters.iter().map(|(id, _)| id).cloned().collect(),
@@ -122,7 +122,7 @@ where
         }
     }
 
-    pub fn to_list_response(&self, term: u128) -> ListServerResponse {
+    pub fn to_list_response(&self, term: u64) -> ListServerResponse {
         ListServerResponse {
             term,
             leader: self.id.clone(),

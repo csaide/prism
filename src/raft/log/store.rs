@@ -23,6 +23,16 @@ impl Log {
         db.open_tree(TREE).map(Log::from).map_err(Error::from)
     }
 
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.tree.len()
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.tree.is_empty()
+    }
+
     pub fn last_log_idx_and_term(&self) -> Result<(u64, u64)> {
         Ok(self
             .tree
@@ -52,8 +62,12 @@ impl Log {
                 None,
                 Some(entry.clone()),
             )? {
-                Ok(_) => return Ok(idx), // CAS succeeded return.
-                Err(_) => continue,      // CAS failed retry.
+                Ok(_) => {
+                    // CAS succeeded flush and return.
+                    self.tree.flush()?;
+                    return Ok(idx);
+                }
+                Err(_) => continue, // CAS failed retry.
             }
         }
     }
@@ -88,7 +102,7 @@ impl Log {
                     }
 
                     if entry.is_cluster_config() {
-                        res = Some(entry.unwrap_cluster_config());
+                        res = Some(entry.clone().unwrap_cluster_config());
                     }
 
                     let entry = match entry.to_ivec() {
@@ -130,12 +144,8 @@ impl Log {
         self.range(..).entries()
     }
 
-    pub async fn flush(&self) -> Result<()> {
-        self.tree
-            .flush_async()
-            .await
-            .map(|_| ())
-            .map_err(Error::from)
+    pub async fn flush(&self) -> Result<usize> {
+        self.tree.flush_async().await.map_err(Error::from)
     }
 }
 
@@ -263,10 +273,18 @@ mod tests {
     )]
     #[case::overwrite(
         vec![
-            (0, vec![Entry::Noop(1), Entry::Noop(2), Entry::Noop(3), Entry::Noop(4), Entry::Noop(5), Entry::Noop(6), Entry::Noop(1), Entry::Noop(2), Entry::Noop(3), Entry::Noop(4), Entry::Noop(5), Entry::Noop(6)]),
+            (0, vec![Entry::Noop(1), Entry::Noop(2), Entry::Noop(3), Entry::Noop(4), Entry::Noop(5), Entry::Noop(6), Entry::Noop(7), Entry::Noop(8), Entry::Noop(9), Entry::Noop(10), Entry::Noop(11), Entry::Noop(12)]),
             (3, vec![Entry::Registration(7), Entry::Registration(8), Entry::Registration(9), Entry::Registration(10), Entry::Registration(11), Entry::Registration(12)]),
         ],
         vec![Entry::Noop(1), Entry::Noop(2), Entry::Noop(3), Entry::Registration(7), Entry::Registration(8), Entry::Registration(9), Entry::Registration(10), Entry::Registration(11), Entry::Registration(12)]
+    )]
+    #[case::complex(
+        vec![
+            (0, vec![Entry::Noop(1), Entry::Noop(2), Entry::Noop(3), Entry::Noop(4), Entry::Noop(5), Entry::Noop(6), Entry::Noop(7), Entry::Noop(8), Entry::Noop(9), Entry::Noop(10), Entry::Noop(11), Entry::Noop(12)]),
+            (3, vec![Entry::Registration(7), Entry::Registration(8), Entry::Registration(9), Entry::Registration(10), Entry::Registration(11), Entry::Registration(12)]),
+            (0, vec![Entry::Noop(1), Entry::Noop(2), Entry::Noop(3), Entry::Noop(4), Entry::Noop(5), Entry::Noop(6), Entry::Noop(7), Entry::Noop(8), Entry::Noop(9), Entry::Noop(10), Entry::Noop(11), Entry::Noop(12)]),
+        ],
+        vec![Entry::Noop(1), Entry::Noop(2), Entry::Noop(3), Entry::Noop(4), Entry::Noop(5), Entry::Noop(6), Entry::Noop(7), Entry::Noop(8), Entry::Noop(9), Entry::Noop(10), Entry::Noop(11), Entry::Noop(12)]
     )]
     fn test_append_entries(
         #[case] writer_lists: Vec<(u64, Vec<Entry>)>,

@@ -72,27 +72,27 @@ impl<P> State<P> {
     Commit, last cluster cfg index, and last applied index tracking.
 */
 impl<P> State<P> {
-    pub fn set_commit_idx(&self, commit_idx: u128) {
+    pub fn set_commit_idx(&self, commit_idx: u64) {
         self.volatile.commit_idx.set(commit_idx)
     }
 
-    pub fn get_commit_idx(&self) -> u128 {
+    pub fn get_commit_idx(&self) -> u64 {
         self.volatile.commit_idx.get()
     }
 
-    pub fn set_last_applied_idx(&self, last_applied_idx: u128) {
+    pub fn set_last_applied_idx(&self, last_applied_idx: u64) {
         self.volatile.last_applied_idx.set(last_applied_idx)
     }
 
-    pub fn get_last_applied_idx(&self) -> u128 {
+    pub fn get_last_applied_idx(&self) -> u64 {
         self.volatile.last_applied_idx.get()
     }
 
-    pub fn set_last_cluster_config_idx(&self, idx: u128) {
+    pub fn set_last_cluster_config_idx(&self, idx: u64) {
         self.volatile.last_cluster_config_idx.set(idx)
     }
 
-    pub fn matches_last_cluster_config_idx(&self, idx: u128) -> bool {
+    pub fn matches_last_cluster_config_idx(&self, idx: u64) -> bool {
         idx >= self.volatile.last_cluster_config_idx.get()
     }
 }
@@ -104,22 +104,22 @@ impl<P> State<P> {
     /*
         Current term handling.
     */
-    pub fn matches_term(&self, term: u128) -> bool {
+    pub fn matches_term(&self, term: u64) -> bool {
         match self.persistent.matches_term(term) {
             Ok(matches) => matches,
             Err(_) => unreachable!(),
         }
     }
 
-    pub fn set_current_term(&self, term: u128) {
+    pub fn set_current_term(&self, term: u64) {
         self.persistent.set_current_term(term).unwrap();
     }
 
-    pub fn get_current_term(&self) -> u128 {
+    pub fn get_current_term(&self) -> u64 {
         self.persistent.get_current_term().unwrap()
     }
 
-    pub fn incr_current_term(&self) -> u128 {
+    pub fn incr_current_term(&self) -> u64 {
         self.persistent.incr_current_term().unwrap_or(0)
     }
 
@@ -151,7 +151,7 @@ where
         })
     }
 
-    pub fn transition_follower(&self, term: Option<u128>) {
+    pub fn transition_follower(&self, term: Option<u64>) {
         self.set_mode(Mode::Follower);
         if let Some(term) = term {
             self.set_current_term(term);
@@ -159,13 +159,13 @@ where
         self.set_voted_for(None);
     }
 
-    pub fn transition_candidate(&self) -> u128 {
+    pub fn transition_candidate(&self) -> u64 {
         self.set_mode(Mode::Candidate);
         self.set_voted_for(Some(self.id.clone()));
         self.incr_current_term()
     }
 
-    pub fn transition_leader(&self, last_log_idx: u128) {
+    pub fn transition_leader(&self, last_log_idx: u64) {
         self.set_mode(Mode::Leader);
         self.peers.lock().reset(last_log_idx);
     }

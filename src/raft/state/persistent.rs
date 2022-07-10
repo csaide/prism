@@ -30,35 +30,35 @@ impl PersistentState {
         Ok(())
     }
 
-    pub fn matches_term(&self, term: u128) -> Result<bool> {
+    pub fn matches_term(&self, term: u64) -> Result<bool> {
         self.get_current_term().map(|current| current == term)
     }
 
-    pub fn get_current_term(&self) -> Result<u128> {
+    pub fn get_current_term(&self) -> Result<u64> {
         match self.tree.get("current_term")? {
             Some(ivec) => ivec
                 .as_ref()
                 .try_into()
-                .map(u128::from_be_bytes)
+                .map(u64::from_be_bytes)
                 .map_err(Error::from),
             None => Ok(1),
         }
     }
 
-    pub fn set_current_term(&self, term: u128) -> Result<()> {
+    pub fn set_current_term(&self, term: u64) -> Result<()> {
         self.tree
             .insert("current_term", &term.to_be_bytes())
             .map(|_| ())
             .map_err(Error::from)
     }
 
-    pub fn incr_current_term(&self) -> Result<u128> {
+    pub fn incr_current_term(&self) -> Result<u64> {
         self.tree
             .update_and_fetch("current_term", |old: Option<&[u8]>| -> Option<Vec<u8>> {
                 let number = match old {
                     Some(bytes) => {
-                        let array: [u8; 16] = bytes.try_into().unwrap();
-                        let number = u128::from_be_bytes(array);
+                        let array: [u8; 8] = bytes.try_into().unwrap();
+                        let number = u64::from_be_bytes(array);
                         number + 1
                     }
                     None => 1,
@@ -69,7 +69,7 @@ impl PersistentState {
             .map(|ivec| {
                 ivec.as_ref()
                     .try_into()
-                    .map(u128::from_be_bytes)
+                    .map(u64::from_be_bytes)
                     .map_err(Error::from)
             })
             .unwrap_or(Ok(1))

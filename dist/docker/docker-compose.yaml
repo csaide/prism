@@ -2,74 +2,74 @@ version: "3"
 
 services:
   peer1:
-    image: ghcr.io/csaide/prism:c090dce5f820da7fc62ddbfc5efc4cd2e2679626
+    image: ghcr.io/csaide/prism:latest
     restart: always
     command:
       - "-p"
       - "8080"
       - "-b"
-      - "grpc://172.20.0.4:8080"
-      - "-b"
       - "grpc://172.20.0.2:8080"
       - "-b"
       - "grpc://172.20.0.3:8080"
-      - "-d"
-      - "/var/lib/prism"
-      - "-a"
-      - "172.20.0.4"
-    ports:
-      - "8081:8080"
-    networks:
-      prism:
-        ipv4_address: 172.20.0.4
-    volumes:
-      - peer1:/var/lib/prism
-
-  peer2:
-    image: ghcr.io/csaide/prism:c090dce5f820da7fc62ddbfc5efc4cd2e2679626
-    restart: always
-    command:
-      - "-p"
-      - "8080"
       - "-b"
       - "grpc://172.20.0.4:8080"
-      - "-b"
-      - "grpc://172.20.0.2:8080"
-      - "-b"
-      - "grpc://172.20.0.3:8080"
       - "-d"
       - "/var/lib/prism"
       - "-a"
       - "172.20.0.2"
     ports:
-      - "8082:8080"
+      - "8081:8080"
     networks:
       prism:
         ipv4_address: 172.20.0.2
     volumes:
-      - peer2:/var/lib/prism
+      - peer1:/var/lib/prism
 
-  peer3:
-    image: ghcr.io/csaide/prism:c090dce5f820da7fc62ddbfc5efc4cd2e2679626
+  peer2:
+    image: ghcr.io/csaide/prism:latest
     restart: always
     command:
       - "-p"
       - "8080"
       - "-b"
-      - "grpc://172.20.0.4:8080"
-      - "-b"
       - "grpc://172.20.0.2:8080"
       - "-b"
       - "grpc://172.20.0.3:8080"
+      - "-b"
+      - "grpc://172.20.0.4:8080"
       - "-d"
       - "/var/lib/prism"
       - "-a"
       - "172.20.0.3"
     ports:
-      - "8083:8080"
+      - "8082:8080"
     networks:
       prism:
         ipv4_address: 172.20.0.3
+    volumes:
+      - peer2:/var/lib/prism
+
+  peer3:
+    image: ghcr.io/csaide/prism:latest
+    restart: always
+    command:
+      - "-p"
+      - "8080"
+      - "-b"
+      - "grpc://172.20.0.2:8080"
+      - "-b"
+      - "grpc://172.20.0.3:8080"
+      - "-b"
+      - "grpc://172.20.0.4:8080"
+      - "-d"
+      - "/var/lib/prism"
+      - "-a"
+      - "172.20.0.4"
+    ports:
+      - "8083:8080"
+    networks:
+      prism:
+        ipv4_address: 172.20.0.4
     volumes:
       - peer3:/var/lib/prism
 

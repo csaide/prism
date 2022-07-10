@@ -10,8 +10,8 @@ use super::{
 pub struct Peer<C> {
     client: Option<C>,
     pub id: String,
-    pub next_idx: u128,
-    pub match_idx: u128,
+    pub next_idx: u64,
+    pub match_idx: u64,
 }
 
 impl<C> Peer<C>
@@ -36,7 +36,7 @@ where
         }
     }
 
-    pub fn reset(&mut self, last_log_idx: u128) {
+    pub fn reset(&mut self, last_log_idx: u64) {
         self.next_idx = last_log_idx + 1;
         self.match_idx = 0;
     }

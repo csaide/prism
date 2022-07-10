@@ -7,21 +7,23 @@ use sled::IVec;
 
 use super::{Entry, Error, Result};
 
-fn ivec_to_key(idx: IVec) -> u64 {
+const CORRUPTION: &str = "internal database corruption detected... shutting down";
+
+pub fn ivec_to_key(idx: IVec) -> u64 {
     // We have to panic here, this is _only_ called when pulling data out of the DB,
     // if we fail to deserialize.... thats a very _VERY_ bad thing. Panic and shutdown
     // is the only option as the DB has become corupted.
     idx.as_ref()
         .try_into()
         .map(u64::from_be_bytes)
-        .expect("internal database corruption detected... shutting down")
+        .expect(CORRUPTION)
 }
 
 pub fn ivec_to_entry(entry: IVec) -> Entry {
     // We have to panic here, this is _only_ called when pulling data out of the DB,
     // if we fail to deserialize.... thats a very _VERY_ bad thing. Panic and shutdown
     // is the only option as the DB has become corupted.
-    Entry::from_ivec(entry).expect("internal database corruption detected... shutting down")
+    Entry::from_ivec(entry).expect(CORRUPTION)
 }
 
 pub fn tuple_to_key_entry(tuple: (IVec, IVec)) -> (u64, Entry) {

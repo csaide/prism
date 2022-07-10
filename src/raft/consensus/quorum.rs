@@ -1,6 +1,7 @@
 // (c) Copyright 2022 Christian Saide
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::iter::Iterator;
 use std::{collections::HashMap, sync::Arc};
 
 use tokio::sync::{mpsc, watch};
@@ -52,26 +53,24 @@ where
 
     fn send_requests(
         &self,
-        saved_term: u128,
+        saved_term: u64,
         tx: &mpsc::Sender<(usize, String, Result<AppendEntriesResponse>)>,
     ) {
         for (peer_id, peer) in self.state.peers.lock().iter() {
             let prev_log_idx = peer.next_idx - 1;
             let mut prev_log_term = 0;
             if prev_log_idx > 0 {
-                prev_log_term = self
-                    .log
-                    .get(prev_log_idx)
-                    .map(|entry| entry.term())
-                    .unwrap_or(0);
+                prev_log_term = match self.log.get(prev_log_idx) {
+                    Ok(opt) => opt.map(|entry| entry.term()).unwrap_or(0),
+                    Err(_) => continue,
+                };
             }
 
             let entries = self
                 .log
-                .range(peer.next_idx, u128::MAX)
-                .unwrap_or_default()
-                .drain(..)
-                .map(|(_, entry)| entry)
+                .range(peer.next_idx..)
+                .entries()
+                .filter_map(|entry| entry.ok())
                 .collect();
             let req = AppendEntriesRequest {
                 leader_commit_idx: self.state.get_commit_idx(),
@@ -95,7 +94,7 @@ where
 
     async fn handle_responses(
         &self,
-        saved_term: u128,
+        saved_term: u64,
         mut rx: mpsc::Receiver<(usize, String, Result<AppendEntriesResponse>)>,
     ) -> bool {
         let mut successes = HashMap::<String, bool>::default();
@@ -135,19 +134,25 @@ where
                 successes.insert(peer_id.clone(), true);
             }
 
-            peer.next_idx += entries as u128;
+            peer.next_idx += entries as u64;
             peer.match_idx = peer.next_idx - 1;
 
             let saved_commit = self.state.get_commit_idx();
             let start = saved_commit + 1;
-            for idx in start..(self.log.len() + 1) as u128 {
+            for idx in start.. {
                 match self.log.get(idx) {
-                    Ok(entry) if entry.term() != saved_term => continue,
+                    Ok(entry) => match entry {
+                        Some(entry) => {
+                            if entry.term() != saved_term {
+                                continue;
+                            }
+                        }
+                        None => break,
+                    },
                     Err(e) => {
                         error!(self.logger, "Failed to pull entry."; "error" => e.to_string());
                         continue;
                     }
-                    _ => {}
                 };
                 if locked_peers.idx_matches(idx) {
                     self.state.set_commit_idx(idx);

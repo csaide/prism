@@ -26,7 +26,7 @@ where
         }
     }
 
-    pub async fn exec(&self, saved_term: u128) -> ElectionResult {
+    pub async fn exec(&self, saved_term: u64) -> ElectionResult {
         let (tx, rx) = mpsc::channel::<Result<RequestVoteResponse>>(self.state.peers.lock().len());
 
         if let Err(e) = self.send_requests(saved_term, tx) {
@@ -38,7 +38,7 @@ where
 
     pub fn send_requests(
         &self,
-        saved_term: u128,
+        saved_term: u64,
         tx: mpsc::Sender<Result<RequestVoteResponse>>,
     ) -> Result<()> {
         let (last_log_idx, last_log_term) = self.log.last_log_idx_and_term()?;
@@ -64,7 +64,7 @@ where
 
     pub async fn handle_responses(
         &self,
-        saved_term: u128,
+        saved_term: u64,
         mut rx: mpsc::Receiver<Result<RequestVoteResponse>>,
     ) -> ElectionResult {
         let mut votes: usize = 1;
@@ -131,7 +131,7 @@ mod tests {
         mock
     }
 
-    fn mock_client_vote_false(term: u128) -> MockClient {
+    fn mock_client_vote_false(term: u64) -> MockClient {
         let mut mock = MockClient::default();
         mock.expect_clone().once().returning(move || {
             let mut mock = MockClient::default();

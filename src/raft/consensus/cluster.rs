@@ -332,7 +332,7 @@ mod tests {
         let (tx, _rx) = mpsc::channel(10);
         let handler = Cluster::new(&logger, state, log, watcher.clone(), tx);
 
-        let mut idx: u128 = 1;
+        let mut idx: u64 = 1;
         for add_req in add_reqs {
             let watch = watcher.clone();
             std::thread::spawn(move || {

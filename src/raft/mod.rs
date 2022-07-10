@@ -4,7 +4,7 @@
 mod cluster;
 mod consensus;
 mod error;
-pub mod log;
+mod log;
 mod models;
 mod state;
 mod state_machine;
@@ -13,6 +13,7 @@ mod workers;
 pub use cluster::*;
 pub use consensus::*;
 pub use error::{Error, Result};
+pub use log::*;
 pub use models::*;
 pub use state::*;
 pub use state_machine::StateMachine;

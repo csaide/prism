@@ -9,8 +9,8 @@ use crate::raft::{Client, StateMachine};
 
 use super::{
     Command, Entry, Error, Log, MutateStateRequest, MutateStateResponse, Quorum, ReadStateRequest,
-    ReadStateResponse, RegisterClientRequest, RegisterClientResponse, Registration, Result, State,
-    Watcher, NOT_LEADER, OK,
+    ReadStateResponse, RegisterClientRequest, RegisterClientResponse, Result, State, Watcher,
+    NOT_LEADER, OK,
 };
 
 #[tonic::async_trait]
@@ -78,8 +78,8 @@ where
         res
     }
 
-    async fn submit_registration(&self, reg: Registration) -> Result<u128> {
-        let idx = self.log.append(Entry::Registration(reg))?;
+    async fn submit_registration(&self, term: u64) -> Result<u64> {
+        let idx = self.log.append(Entry::Registration(term))?;
 
         let rx = self.watcher.register_registration_watch(idx);
         self.submit_tx.send(()).await?;
@@ -114,9 +114,7 @@ where
         }
 
         let term = self.state.get_current_term();
-        let reg = Registration { term };
-
-        let idx = self.submit_registration(reg).await?;
+        let idx = self.submit_registration(term).await?;
 
         Ok(RegisterClientResponse {
             client_id: idx.to_be_bytes().to_vec(),
@@ -310,7 +308,7 @@ mod tests {
     #[case::leader(
         Mode::Leader,
         Ok(RegisterClientResponse {
-            client_id: 1u128.to_be_bytes().to_vec(),
+            client_id: 1u64.to_be_bytes().to_vec(),
             leader_hint: String::from("leader"),
             status: OK.to_string(),
         })
@@ -335,13 +333,13 @@ mod tests {
             let resp_id = resp
                 .client_id
                 .try_into()
-                .map(u128::from_be_bytes)
-                .expect("Failed to cast client id to u128");
+                .map(u64::from_be_bytes)
+                .expect("Failed to cast client id to u64");
             let expected_id = expected
                 .client_id
                 .try_into()
-                .map(u128::from_be_bytes)
-                .expect("Failed to cast client id to u128");
+                .map(u64::from_be_bytes)
+                .expect("Failed to cast client id to u64");
             assert_eq!(resp_id, expected_id);
         } else {
             assert!(resp.is_err());
@@ -462,7 +460,7 @@ mod tests {
         Query {key: String::from("read")},
         Ok(ReadStateResponse {
             status: String::from("OK"),
-            response: bincode::serialize::<Option<u128>>(&None).expect("Failed to serialize"),
+            response: bincode::serialize::<Option<u64>>(&None).expect("Failed to serialize"),
             leader_hint: String::from("leader"),
         }),
         happy_path(),

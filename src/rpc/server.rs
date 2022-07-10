@@ -67,3 +67,42 @@ pub async fn serve(
         .serve_with_shutdown(addr, shutdown)
         .await
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, time::Duration};
+
+    use super::*;
+
+    use crate::{log, raft::Module};
+
+    #[tokio::test]
+    async fn test_server() {
+        let logger = log::noop();
+        let id = String::from("leader");
+        let db = sled::Config::new()
+            .temporary(true)
+            .open()
+            .expect("Failed to open temp database.");
+        let state_machine = HashState::new(&logger);
+
+        let mut module = Module::<RaftClient<Channel>, HashState>::new(
+            id,
+            HashMap::default(),
+            &logger,
+            &db,
+            state_machine,
+        )
+        .expect("Failed to generate new module.");
+
+        let srv = serve(
+            "0.0.0.0:9090".parse().unwrap(),
+            module.get_repo().unwrap(),
+            logger,
+            async move {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            },
+        );
+        srv.await.unwrap()
+    }
+}

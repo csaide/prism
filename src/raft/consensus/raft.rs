@@ -58,7 +58,7 @@ where
 
         let log_ok = |append_request: &AppendEntriesRequest| -> Result<bool> {
             Ok(append_request.prev_log_idx == 0
-                || (append_request.prev_log_idx <= self.log.len() as u128
+                || (append_request.prev_log_idx <= self.log.len() as u64
                     && self.log.idx_and_term_match(
                         append_request.prev_log_idx,
                         append_request.prev_log_term,
@@ -111,7 +111,7 @@ where
             }
             if append_request.leader_commit_idx > self.state.get_commit_idx() {
                 self.state
-                    .set_commit_idx(append_request.leader_commit_idx.min(self.log.len() as u128));
+                    .set_commit_idx(append_request.leader_commit_idx.min(self.log.len() as u64));
                 self.commit_tx.send(())?;
             }
         }

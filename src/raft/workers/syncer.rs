@@ -42,7 +42,7 @@ where
                 }
             };
             if resp.success {
-                self.peer.next_idx += entries as u128;
+                self.peer.next_idx += entries as u64;
                 self.peer.match_idx = self.peer.next_idx - 1;
                 // We are being "dumb" and just sending the entire log all at once
                 // this is really not an effective solution, so come back and fix this.
@@ -54,23 +54,23 @@ where
         }
     }
 
-    pub async fn send_request(&mut self, term: u128) -> (usize, Result<AppendEntriesResponse>) {
+    pub async fn send_request(&mut self, term: u64) -> (usize, Result<AppendEntriesResponse>) {
         let prev_log_idx = self.peer.next_idx - 1;
         let mut prev_log_term = 0;
         if prev_log_idx > 0 {
             prev_log_term = self
                 .log
                 .get(prev_log_idx)
+                .unwrap_or(None)
                 .map(|entry| entry.term())
                 .unwrap_or(0);
         }
 
         let entries = self
             .log
-            .range(self.peer.next_idx, u128::MAX)
-            .unwrap_or_default()
-            .drain(..)
-            .map(|(_, entry)| entry)
+            .range(self.peer.next_idx..)
+            .entries()
+            .filter_map(|entry| entry.ok())
             .collect();
         let req = AppendEntriesRequest {
             leader_commit_idx: self.state.get_commit_idx(),

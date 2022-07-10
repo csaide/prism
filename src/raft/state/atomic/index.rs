@@ -5,7 +5,7 @@ use std::sync::RwLock;
 
 #[derive(Debug)]
 pub struct AtomicIndex {
-    inner: RwLock<u128>,
+    inner: RwLock<u64>,
 }
 
 impl AtomicIndex {
@@ -15,10 +15,10 @@ impl AtomicIndex {
         }
     }
 
-    pub fn get(&self) -> u128 {
+    pub fn get(&self) -> u64 {
         *self.inner.read().unwrap()
     }
-    pub fn set(&self, idx: u128) {
+    pub fn set(&self, idx: u64) {
         *self.inner.write().unwrap() = idx
     }
 }
@@ -29,8 +29,8 @@ impl Default for AtomicIndex {
     }
 }
 
-impl From<u128> for AtomicIndex {
-    fn from(inner: u128) -> AtomicIndex {
+impl From<u64> for AtomicIndex {
+    fn from(inner: u64) -> AtomicIndex {
         AtomicIndex {
             inner: RwLock::new(inner),
         }

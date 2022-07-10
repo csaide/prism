@@ -51,15 +51,12 @@ where
                 continue;
             };
 
-            let mut entries = match self.log.range(last_applied_idx + 1, commit_idx + 1) {
-                Ok(entries) => entries,
-                Err(e) => {
-                    error!(self.logger, "Failed to pull new log entries to apply."; "error" => e.to_string());
-                    continue;
-                }
-            };
+            let entries = self
+                .log
+                .range(last_applied_idx + 1..=commit_idx + 1)
+                .filter_map(|entry| entry.ok());
 
-            for (idx, entry) in entries.drain(..) {
+            for (idx, entry) in entries {
                 use Entry::*;
                 match entry {
                     // Put response on oneshot tx here....
@@ -76,6 +73,11 @@ where
                         info!(self.logger, "Commited client registration."; "idx" => idx);
                         self.watcher.registration_applied(idx);
                     }
+                    Noop(_) => {
+                        info!(self.logger, "Commited noop leader append."; "idx" => idx);
+                        // TODO(csaide): Add watcher integration.
+                    }
+                    None => unreachable!(),
                 }
             }
 

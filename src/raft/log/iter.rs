@@ -11,16 +11,19 @@ pub struct Iter {
 }
 
 impl Iter {
+    #[inline]
     pub fn keys(self) -> impl DoubleEndedIterator<Item = Result<u64>> + Send + Sync {
         self.inner.map(result_tuple_to_key)
     }
 
+    #[inline]
     pub fn entries(self) -> impl DoubleEndedIterator<Item = Result<Entry>> + Send + Sync {
         self.inner.map(result_tuple_to_entry)
     }
 }
 
 impl From<sled::Iter> for Iter {
+    #[inline]
     fn from(inner: sled::Iter) -> Iter {
         Iter { inner }
     }
@@ -29,16 +32,19 @@ impl From<sled::Iter> for Iter {
 impl Iterator for Iter {
     type Item = Result<(u64, Entry)>;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(result_tuple_to_key_entry)
     }
 
+    #[inline]
     fn last(self) -> Option<Self::Item> {
         self.inner.last().map(result_tuple_to_key_entry)
     }
 }
 
 impl DoubleEndedIterator for Iter {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         self.inner.next_back().map(result_tuple_to_key_entry)
     }

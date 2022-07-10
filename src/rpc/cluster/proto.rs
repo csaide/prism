@@ -94,18 +94,11 @@ impl From<ListServerRequest> for ListRequest {
 
 impl From<ListResponse> for ListServerResponse {
     fn from(input: ListResponse) -> ListServerResponse {
-        let term = input
-            .term
-            .as_slice()
-            .try_into()
-            .map(u128::from_be_bytes)
-            .unwrap_or(0);
-
         ListServerResponse {
             leader: input.leader,
             replicas: input.replicas,
             voters: input.voters,
-            term,
+            term: input.term,
         }
     }
 }
@@ -116,7 +109,7 @@ impl From<ListServerResponse> for ListResponse {
             leader: input.leader,
             replicas: input.replicas,
             voters: input.voters,
-            term: input.term.to_be_bytes().to_vec(),
+            term: input.term,
         }
     }
 }
@@ -220,7 +213,7 @@ mod tests {
         assert_eq!(2, actual.replicas.len());
         assert_eq!(3, actual.voters.len());
         assert_eq!(leader, actual.leader);
-        assert_eq!(1u128.to_be_bytes().to_vec(), actual.term);
+        assert_eq!(1u64, actual.term);
 
         let actual_raft = ListServerResponse::from(actual);
         assert_eq!(2, actual_raft.replicas.len());
