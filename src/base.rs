@@ -8,13 +8,13 @@ use structopt::{
     StructOpt,
 };
 
-use super::log;
+use super::logging;
 
 pub fn config<T>(args: Vec<OsString>, bin: &'static str) -> Result<T, (exitcode::ExitCode, String)>
 where
     T: StructOpt,
 {
-    let setup_logger = log::default(bin, crate_version!());
+    let setup_logger = logging::default(bin, crate_version!());
     T::from_iter_safe(args).map_err(|err| {
         if err.kind == ErrorKind::HelpDisplayed || err.kind == ErrorKind::VersionDisplayed {
             (exitcode::USAGE, err.message)

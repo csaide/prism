@@ -42,7 +42,7 @@ mod tests {
 
     use crate::{
         hash::HashState,
-        log,
+        logging,
         raft::{Log, MockClient, State, Watcher},
     };
 
@@ -57,7 +57,7 @@ mod tests {
         let commit_tx = Arc::new(commit_tx);
         let (_, applied_rx) = watch::channel(());
 
-        let logger = log::noop();
+        let logger = logging::noop();
         let peers = HashMap::default();
         let id = String::from("leader");
         let db = sled::Config::new()

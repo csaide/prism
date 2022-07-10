@@ -8,7 +8,7 @@ use std::time::Duration;
 use crate::raft::{Module, Peer};
 use crate::rpc::cluster::{AddRequest, ClusterClient};
 use crate::rpc::server::serve;
-use crate::{hash, log};
+use crate::{hash, logging};
 
 use exitcode::ExitCode;
 use futures::stream::StreamExt;
@@ -31,7 +31,7 @@ const PRISMD: &str = "prismd";
 )]
 struct PrismdConfig {
     #[structopt(flatten)]
-    log_config: log::Config,
+    log_config: logging::Config,
     #[structopt(
         long = "rpc-port",
         short = "p",
@@ -91,7 +91,7 @@ pub async fn run(args: Vec<OsString>) -> ExitCode {
         }
     };
 
-    let root_logger = log::new(&cfg.log_config, PRISMD, crate_version!());
+    let root_logger = logging::new(&cfg.log_config, PRISMD, crate_version!());
 
     let db = match sled::Config::new()
         .path(&cfg.db_path)

@@ -195,7 +195,7 @@ mod tests {
 
     use crate::{
         hash::HashState,
-        log,
+        logging,
         raft::{AppendEntriesResponse, MockClient, Mode, RequestVoteResponse},
     };
 
@@ -265,7 +265,7 @@ mod tests {
         #[case] id: String,
         #[case] mut clients: impl FnMut() -> Vec<(String, Peer<MockClient>)>,
     ) {
-        let logger = log::noop();
+        let logger = logging::noop();
         let db = sled::Config::new()
             .temporary(true)
             .open()

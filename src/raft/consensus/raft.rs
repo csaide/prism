@@ -215,14 +215,14 @@ mod tests {
     use tokio::sync::watch;
 
     use crate::{
-        log,
+        logging,
         raft::{ClusterConfig, Command, Entry, MockClient, Mode, Peer},
     };
 
     use super::*;
 
     fn test_setup(mode: Mode) -> (Raft<MockClient>, Arc<State<MockClient>>) {
-        let logger = log::noop();
+        let logger = logging::noop();
         let id = String::from("leader");
         let db = sled::Config::new()
             .temporary(true)

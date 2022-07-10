@@ -30,9 +30,11 @@ impl FromStr for Level {
     ///
     /// ```
     /// # use std::str::FromStr;
-    /// let x = libprism::log::Level::from_str("critical");
+    /// # use libprism::logging::Level;
+    /// let x = Level::from_str("critical");
+    ///
     /// assert_eq!(x.is_ok(), true);
-    /// assert_eq!(x.unwrap(), libprism::log::Level::Crit);
+    /// assert_eq!(x.unwrap(), Level::Crit);
     /// ```
     fn from_str(t: &str) -> Result<Level> {
         match t {
@@ -53,7 +55,8 @@ impl Level {
     /// of log levels for consumption.
     ///
     /// ```
-    /// let x = libprism::log::Level::Crit;
+    /// # use libprism::logging::Level;
+    /// let x = Level::Crit;
     /// assert_eq!(x.to_slog(), slog::Level::Critical);
     /// ```
     pub fn to_slog(&self) -> slog::Level {

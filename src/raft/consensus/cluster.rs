@@ -201,7 +201,7 @@ mod tests {
     use tokio_test::block_on as wait;
 
     use crate::{
-        log,
+        logging,
         raft::{
             cluster::{get_lock, MockClient, MTX},
             AppendEntriesResponse, Mode, Peer,
@@ -315,7 +315,7 @@ mod tests {
             .times(expected_connects)
             .returning(|_| Ok(mock_client_append_factory()));
 
-        let logger = log::noop();
+        let logger = logging::noop();
         let id = String::from("leader");
         let db = sled::Config::new()
             .temporary(true)

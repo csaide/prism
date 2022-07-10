@@ -113,7 +113,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::{
-        log,
+        logging,
         raft::{Error, MockClient, Peer},
     };
 
@@ -167,7 +167,7 @@ mod tests {
             .temporary(true)
             .open()
             .expect("Failed to open temp database");
-        let logger = log::noop();
+        let logger = logging::noop();
 
         let log = Log::new(&db).expect("Failed to open log.");
         let log = Arc::new(log);
@@ -193,7 +193,7 @@ mod tests {
             .temporary(true)
             .open()
             .expect("Failed to open temp database");
-        let logger = log::noop();
+        let logger = logging::noop();
 
         let log = Log::new(&db).expect("Failed to open log.");
         let log = Arc::new(log);
@@ -227,7 +227,7 @@ mod tests {
             .temporary(true)
             .open()
             .expect("Failed to open temp database");
-        let logger = log::noop();
+        let logger = logging::noop();
 
         let log = Log::new(&db).expect("Failed to open log.");
         let log = Arc::new(log);
@@ -256,7 +256,7 @@ mod tests {
             .temporary(true)
             .open()
             .expect("Failed to open temp database");
-        let logger = log::noop();
+        let logger = logging::noop();
 
         let log = Log::new(&db).expect("Failed to open log.");
         let log = Arc::new(log);

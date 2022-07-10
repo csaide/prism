@@ -95,7 +95,7 @@ impl StateMachine for HashState {
 mod tests {
     use rstest::rstest;
 
-    use crate::log;
+    use crate::logging;
 
     use super::*;
 
@@ -103,7 +103,7 @@ mod tests {
     #[case::apply(vec![Command::Insert(String::from("hello"), 0)], vec![(String::from("hello"), 0)])]
     #[case::apply_remove(vec![Command::Insert(String::from("hello"), 0), Command::Remove(String::from("hello"))], vec![])]
     fn test_apply(#[case] cmds: Vec<Command>, #[case] expected_entries: Vec<(String, u128)>) {
-        let hs = HashState::new(&log::noop());
+        let hs = HashState::new(&logging::noop());
         for cmd in cmds {
             let serialized = cmd.to_bytes();
             hs.apply(crate::raft::Command {
@@ -123,7 +123,7 @@ mod tests {
 
     #[test]
     fn test_apply_deserialize_fail() {
-        let hs = HashState::new(&log::noop());
+        let hs = HashState::new(&logging::noop());
         let res = hs.apply(crate::raft::Command {
             term: 1,
             data: Vec::default(),
@@ -137,7 +137,7 @@ mod tests {
     #[case::happy_path(vec![Command::Insert(String::from("hello"), 0)], Query{key: String::from("hello")}, Some(0))]
     #[case::empty(vec![], Query{key: String::from("hello")}, None)]
     fn test_read(#[case] cmds: Vec<Command>, #[case] query: Query, #[case] expected: Option<u128>) {
-        let hs = HashState::new(&log::noop());
+        let hs = HashState::new(&logging::noop());
         for cmd in cmds {
             let serialized = cmd.to_bytes();
             hs.apply(crate::raft::Command {
@@ -165,7 +165,7 @@ mod tests {
 
     #[test]
     fn test_read_deserialize_fail() {
-        let hs = HashState::new(&log::noop());
+        let hs = HashState::new(&logging::noop());
         let read = hs.read(Vec::default());
         assert!(read.is_err());
         let read = read.unwrap_err();
@@ -188,7 +188,7 @@ mod tests {
         let query_str = format!("{:?}", query);
         assert_eq!(query_str, "Query { key: \"hello\" }");
 
-        let log = log::noop();
+        let log = logging::noop();
         let hs = HashState::new(&log);
         let cloned = hs.clone();
         let hs_str = format!("{:?}", cloned);

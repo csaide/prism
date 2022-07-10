@@ -59,14 +59,14 @@ where
 mod tests {
     use std::collections::HashMap;
 
-    use crate::log;
+    use crate::logging;
     use crate::raft::MockClient;
 
     use super::*;
 
     #[test]
     fn test_follower() {
-        let logger = log::noop();
+        let logger = logging::noop();
 
         let (heartbeat_tx, heartbeat_rx) = watch::channel(());
         let db = sled::Config::new()

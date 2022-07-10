@@ -13,7 +13,7 @@ pub mod base;
 /// An example state machine implementation based on an in memory hashmap.
 pub mod hash;
 /// General logging utilities/functionality, based ontop of the [slog] ecosystem.
-pub mod log;
+pub mod logging;
 /// Entrypoint logic for prismctl.
 pub mod prismctl;
 /// Entrypoint logic for prismd.

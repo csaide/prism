@@ -74,11 +74,11 @@ mod tests {
 
     use super::*;
 
-    use crate::{log, raft::Module};
+    use crate::{logging, raft::Module};
 
     #[tokio::test]
     async fn test_server() {
-        let logger = log::noop();
+        let logger = logging::noop();
         let id = String::from("leader");
         let db = sled::Config::new()
             .temporary(true)

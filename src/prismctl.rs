@@ -9,7 +9,7 @@ use structopt::StructOpt;
 
 use crate::hash::Query;
 use crate::rpc::frontend::{FrontendClient, MutateRequest, ReadRequest};
-use crate::{hash, log};
+use crate::{hash, logging};
 
 const PRISMCTL: &str = "prismctl";
 
@@ -23,7 +23,7 @@ const PRISMCTL: &str = "prismctl";
 )]
 struct PrismctlConfig {
     #[structopt(flatten)]
-    log_config: log::Config,
+    log_config: logging::Config,
     #[structopt(
         long = "cluster-leader",
         short = "c",
@@ -98,7 +98,7 @@ pub async fn run(args: Vec<OsString>) -> ExitCode {
         }
     };
 
-    let root_logger = log::new(&cfg.log_config, PRISMCTL, crate_version!());
+    let root_logger = logging::new(&cfg.log_config, PRISMCTL, crate_version!());
     info!(root_logger, "Hello world!");
 
     let mut client = match FrontendClient::connect(cfg.leader).await {

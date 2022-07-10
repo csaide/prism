@@ -184,7 +184,7 @@ mod tests {
     use rstest::rstest;
 
     use crate::{
-        log,
+        logging,
         raft::{Command, Entry, Error, MockClient, Mode, Peer},
     };
 
@@ -195,7 +195,7 @@ mod tests {
         entries: Vec<Entry>,
         mode: Mode,
     ) -> Quorum<MockClient> {
-        let logger = log::noop();
+        let logger = logging::noop();
         let db = sled::Config::new()
             .temporary(true)
             .open()

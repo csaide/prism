@@ -222,7 +222,7 @@ mod tests {
 
     use crate::{
         hash::{Command, HashState, Query},
-        log,
+        logging,
         raft::{cluster::MockClient, AppendEntriesResponse, Commiter, Mode, Peer},
     };
 
@@ -232,7 +232,7 @@ mod tests {
         mode: Mode,
         peers: HashMap<String, Peer<MockClient>>,
     ) -> (Frontend<MockClient, HashState>, Arc<State<MockClient>>) {
-        let logger = log::noop();
+        let logger = logging::noop();
         let id = String::from("leader");
         let db = sled::Config::new()
             .temporary(true)

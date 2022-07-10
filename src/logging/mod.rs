@@ -30,7 +30,7 @@ pub fn noop() -> slog::Logger {
 /// ```
 /// use slog::crit;
 ///
-/// let logger = libprism::log::default("example", "0.1.1");
+/// let logger = libprism::logging::default("example", "0.1.1");
 /// crit!(logger, "default logger only logs crit level logs!"; "hello" => "world!");
 /// ```
 pub fn default(bin: &'static str, version: &'static str) -> slog::Logger {
@@ -58,9 +58,9 @@ pub fn default(bin: &'static str, version: &'static str) -> slog::Logger {
 /// ```
 /// use slog::info;
 ///
-/// let logger = libprism::log::new(
-///     &libprism::log::Config {
-///         level: libprism::log::Level::Info,
+/// let logger = libprism::logging::new(
+///     &libprism::logging::Config {
+///         level: libprism::logging::Level::Info,
 ///         json: true,
 ///     },
 ///     "example",
