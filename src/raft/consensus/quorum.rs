@@ -8,7 +8,7 @@ use tokio::sync::{mpsc, watch};
 
 use super::{AppendEntriesRequest, AppendEntriesResponse, Client, Log, Result, State};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Quorum<P> {
     logger: slog::Logger,
     state: Arc<State<P>>,
@@ -56,7 +56,13 @@ where
         saved_term: u64,
         tx: &mpsc::Sender<(usize, String, Result<AppendEntriesResponse>)>,
     ) {
-        for (peer_id, peer) in self.state.peers.lock().iter() {
+        for (peer_id, peer) in self
+            .state
+            .peers
+            .lock()
+            .iter()
+            .filter(|(id, _)| **id != self.state.id)
+        {
             let prev_log_idx = peer.next_idx - 1;
             let mut prev_log_term = 0;
             if prev_log_idx > 0 {
@@ -126,16 +132,21 @@ where
                 Some(peer) => peer,
                 None => continue,
             };
+
             if !resp.success {
                 peer.next_idx -= 1;
                 successes.insert(peer_id.clone(), false);
                 continue;
-            } else {
-                successes.insert(peer_id.clone(), true);
             }
 
             peer.next_idx += entries as u64;
             peer.match_idx = peer.next_idx - 1;
+
+            if peer.is_voter() {
+                successes.insert(peer_id.clone(), true);
+            } else {
+                continue;
+            }
 
             let saved_commit = self.state.get_commit_idx();
             let start = saved_commit + 1;
@@ -165,7 +176,7 @@ where
                 if self
                     .state
                     .matches_last_cluster_config_idx(self.state.get_commit_idx())
-                    && !locked_peers.contains(&self.state.id)
+                    && !locked_peers.contains_key(&self.state.id)
                 {
                     self.state.transition_dead();
                     return false;

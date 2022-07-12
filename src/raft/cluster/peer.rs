@@ -12,19 +12,35 @@ pub struct Peer<C> {
     pub id: String,
     pub next_idx: u64,
     pub match_idx: u64,
+    pub replica: bool,
 }
 
 impl<C> Peer<C>
 where
     C: Client + Send + Clone + 'static,
 {
-    pub fn new(id: String) -> Peer<C> {
+    pub fn voter(id: String) -> Peer<C> {
         Peer {
             id,
             client: None,
             next_idx: 1,
             match_idx: 0,
+            replica: false,
         }
+    }
+
+    pub fn replica(id: String) -> Peer<C> {
+        Peer {
+            id,
+            client: None,
+            next_idx: 1,
+            match_idx: 0,
+            replica: true,
+        }
+    }
+
+    pub fn is_voter(&self) -> bool {
+        !self.replica
     }
 
     pub fn with_client(id: String, client: C) -> Peer<C> {
@@ -33,6 +49,7 @@ where
             client: Some(client),
             next_idx: 1,
             match_idx: 0,
+            replica: false,
         }
     }
 
@@ -104,7 +121,7 @@ mod tests {
             .with(eq(addr.clone()))
             .returning(|_| Ok(mock_client_vote_factory()));
 
-        let mut peer = Peer::<MockClient>::new(addr.clone());
+        let mut peer = Peer::<MockClient>::voter(addr.clone());
 
         let last_log_idx = 1;
         peer.reset(last_log_idx);
@@ -134,7 +151,7 @@ mod tests {
             .with(eq(addr.clone()))
             .returning(|_| Ok(mock_client_append_factory()));
 
-        let mut peer = Peer::<MockClient>::new(addr.clone());
+        let mut peer = Peer::<MockClient>::voter(addr.clone());
 
         let last_log_idx = 1;
         peer.reset(last_log_idx);

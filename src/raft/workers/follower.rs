@@ -16,6 +16,7 @@ pub struct Follower<P> {
     heartbeat_rx: watch::Receiver<()>,
     min_timeout_ms: u64,
     max_timeout_ms: u64,
+    replica: bool,
 }
 
 impl<P> Follower<P>
@@ -26,6 +27,7 @@ where
         logger: &slog::Logger,
         state: Arc<State<P>>,
         heartbeat_rx: watch::Receiver<()>,
+        replica: bool,
     ) -> Follower<P> {
         Follower {
             state,
@@ -33,6 +35,7 @@ where
             heartbeat_rx,
             min_timeout_ms: 150,
             max_timeout_ms: 300,
+            replica,
         }
     }
     pub async fn exec(&mut self) {
@@ -48,7 +51,9 @@ where
                     "Timed out waiting for heartbeat starting election."
                 );
                 self.state.lost_leader();
-                return;
+                if !self.replica {
+                    return;
+                }
             }
             debug!(self.logger, "Got heartbeat re-setting heartbeat.");
         }
@@ -77,7 +82,7 @@ mod tests {
             State::<MockClient>::new(String::from("id"), HashMap::default(), &db)
                 .expect("Failed to create shared state."),
         );
-        let mut follower = Follower::new(&logger, state, heartbeat_rx);
+        let mut follower = Follower::new(&logger, state, heartbeat_rx, false);
         follower.max_timeout_ms = 2;
         follower.min_timeout_ms = 1;
         heartbeat_tx.send(()).expect("Failed to send wake up.");

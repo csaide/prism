@@ -5,11 +5,11 @@ use super::*;
 
 mod client;
 mod peer;
-mod peers;
+mod set;
 
 pub use client::Client;
 pub use peer::Peer;
-pub use peers::Peers;
+pub use set::{ClusterSet, ClusterSetGuard};
 
 #[cfg(test)]
 pub use client::mock::{get_lock, MockClient, MTX};

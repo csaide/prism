@@ -79,6 +79,14 @@ struct PrismdConfig {
         takes_value = true
     )]
     local_host: Option<String>,
+    #[structopt(
+        long = "replica",
+        short = "r",
+        env = "PRISM_REPLICA",
+        help = "Run in replica mode.",
+        takes_value = false
+    )]
+    replica: bool,
 }
 
 pub async fn run(args: Vec<OsString>) -> ExitCode {
@@ -93,11 +101,7 @@ pub async fn run(args: Vec<OsString>) -> ExitCode {
 
     let root_logger = logging::new(&cfg.log_config, PRISMD, crate_version!());
 
-    let db = match sled::Config::new()
-        .path(&cfg.db_path)
-        .temporary(true)
-        .open()
-    {
+    let db = match sled::Config::new().path(&cfg.db_path).open() {
         Ok(db) => db,
         Err(e) => {
             error!(root_logger, "Failed to open internal database."; "error" => e.to_string(), "path" => &cfg.db_path);
@@ -109,7 +113,7 @@ pub async fn run(args: Vec<OsString>) -> ExitCode {
     let mut peers = HashMap::default();
     if let Some(mut bootstrap) = cfg.bootstrap {
         for peer_addr in bootstrap.drain(..) {
-            let peer = Peer::new(peer_addr.clone());
+            let peer = Peer::voter(peer_addr.clone());
             peers.insert(peer_addr, peer);
         }
     }
@@ -120,7 +124,7 @@ pub async fn run(args: Vec<OsString>) -> ExitCode {
         cfg.rpc_port
     );
 
-    if let Some(join) = cfg.join {
+    if let Some(mut join) = cfg.join {
         let join_logger = root_logger.clone();
         let member = id.clone();
         tokio::task::spawn(async move {
@@ -136,22 +140,33 @@ pub async fn run(args: Vec<OsString>) -> ExitCode {
                 };
                 let req = AddRequest {
                     member: member.clone(),
-                    replica: false,
+                    replica: cfg.replica,
                 };
                 match client.add(req).await {
                     Err(e) => {
                         error!(join_logger, "Failed to add self to cluster... retrying."; "error" => e.to_string());
-
                         continue;
                     }
-                    _ => break,
+                    Ok(res) => {
+                        let res = res.into_inner();
+                        match res.status.as_str() {
+                            "OK" => {
+                                info!(join_logger, "Added self to cluster.");
+                                break;
+                            }
+                            _ => {
+                                warn!(join_logger, "Failed to add self to cluster... retrying."; "error" => "peer not leader", "new_leader" => &res.leader_hint);
+                                join = res.leader_hint;
+                                continue;
+                            }
+                        }
+                    }
                 };
             }
-            info!(join_logger, "Added self to cluster.")
         });
     }
 
-    let mut cm = match Module::new(id, peers, &root_logger, &db, sm) {
+    let mut cm = match Module::new(id, peers, &root_logger, &db, sm, cfg.replica) {
         Ok(cm) => cm,
         Err(e) => {
             error!(root_logger, "Failed to create internal consensus module."; "error" => e.to_string());

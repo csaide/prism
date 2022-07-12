@@ -89,7 +89,7 @@ where
 
         let cfg = {
             let mut locked_peers = self.state.peers.lock();
-            locked_peers.append(server_request.id, server_request.peer);
+            locked_peers.insert(server_request.id, server_request.peer);
 
             locked_peers.to_cluster_config(self.state.get_current_term())
         };
@@ -230,7 +230,7 @@ mod tests {
         vec![
             (AddServerRequest {
                 id: String::from("leader"),
-                peer: Peer::new(String::from("leader")),
+                peer: Peer::voter(String::from("leader")),
                 replica: false,
             }, Ok(AddServerResponse {
                 leader_hint: String::from("leader"),
@@ -238,7 +238,7 @@ mod tests {
             })),
             (AddServerRequest {
                 id: String::from("follower"),
-                peer: Peer::new(String::from("follower")),
+                peer: Peer::voter(String::from("follower")),
                 replica: false,
             }, Ok(AddServerResponse {
                 leader_hint: String::from("leader"),
@@ -266,7 +266,7 @@ mod tests {
         vec![
             (AddServerRequest {
                 id: String::from("leader"),
-                peer: Peer::new(String::from("leader")),
+                peer: Peer::voter(String::from("leader")),
                 replica: false,
             }, Err(Error::Dead))
         ],
@@ -283,7 +283,7 @@ mod tests {
         vec![
             (AddServerRequest {
                 id: String::from("leader"),
-                peer: Peer::new(String::from("leader")),
+                peer: Peer::voter(String::from("leader")),
                 replica: false,
             }, Ok(AddServerResponse{
                 leader_hint: String::from("leader"),

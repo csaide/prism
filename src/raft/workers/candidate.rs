@@ -50,7 +50,13 @@ where
             term: saved_term,
         };
 
-        for (_, peer) in self.state.peers.lock().iter() {
+        for (_, peer) in self
+            .state
+            .peers
+            .lock()
+            .voters()
+            .filter(|(id, _)| self.state.id != **id)
+        {
             let mut cli = peer.clone();
             let req = request.clone();
             let tx = tx.clone();
@@ -98,7 +104,7 @@ where
             }
             if resp.vote_granted {
                 votes += 1;
-                if votes > self.state.peers.lock().len() / 2 {
+                if self.state.peers.lock().quorum(votes) {
                     return ElectionResult::Success;
                 }
             }

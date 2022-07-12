@@ -66,7 +66,8 @@ mod tests {
             .expect("Failed to open temp database.");
         let log = Arc::new(Log::new(&db).expect("Failed to create new Log object."));
         let state = Arc::new(
-            State::<MockClient>::new(id, peers, &db).expect("Failed to create new State object."),
+            State::<MockClient>::new(id.clone(), peers, &db)
+                .expect("Failed to create new State object."),
         );
         let watcher = Arc::new(Watcher::default());
         let state_machine = HashState::new(&logger);

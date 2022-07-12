@@ -27,7 +27,7 @@ impl AtomicLeader {
         self.inner.read().unwrap().is_some()
     }
 
-    pub fn leader(&self) -> Option<String> {
+    pub fn current_leader(&self) -> Option<String> {
         self.inner.read().unwrap().clone()
     }
 }
@@ -47,11 +47,11 @@ mod tests {
         let leader = AtomicLeader::default();
 
         assert!(!leader.have_leader());
-        assert!(matches!(leader.leader(), None));
+        assert!(matches!(leader.current_leader(), None));
 
         leader.saw_leader(String::from("leader"));
         assert!(leader.have_leader());
-        assert!(matches!(leader.leader(), Some(..)));
-        assert_eq!(leader.leader().unwrap(), "leader")
+        assert!(matches!(leader.current_leader(), Some(..)));
+        assert_eq!(leader.current_leader().unwrap(), "leader")
     }
 }

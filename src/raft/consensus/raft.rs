@@ -105,7 +105,7 @@ where
                 .append_entries(append_request.prev_log_idx, append_request.entries)?
             {
                 info!(self.logger, "Cluster configuration updated!"; "voters" => format!("{:?}", &cfg.voters));
-                if !self.state.peers.lock().update(cfg)? {
+                if !self.state.peers.lock().update(cfg) {
                     self.state.transition_dead();
                 }
             }
@@ -139,14 +139,14 @@ where
             let voted_for = self.state.get_voted_for();
             Ok(vote_request.term == self.state.get_current_term()
                 && !self.state.have_leader()
-                && locked_peers.contains(&vote_request.candidate_id)
+                && locked_peers.contains_key(&vote_request.candidate_id)
                 && (log_ok)(vote_request)?
                 && (voted_for.is_none()
                     || voted_for.as_ref().unwrap() == &vote_request.candidate_id))
         };
 
         let term = self.state.get_current_term();
-        if vote_request.term > term && locked_peers.contains(&vote_request.candidate_id) {
+        if vote_request.term > term && locked_peers.contains_key(&vote_request.candidate_id) {
             debug!(self.logger, "Internal term is out of date with leader term.";
                 "rpc" => "append",
                 "got" => vote_request.term,
@@ -235,8 +235,8 @@ mod tests {
         state.set_mode(mode);
         state.set_current_term(1);
         let leader_id = String::from("leader");
-        let leader = Peer::new(leader_id.clone());
-        state.peers.lock().append(leader_id, leader);
+        let leader = Peer::voter(leader_id.clone());
+        state.peers.lock().insert(leader_id, leader);
 
         let log = Arc::new(Log::new(&db).expect("Failed to create new persistent Log."));
         let (commit_tx, mut commit_rx) = watch::channel(());

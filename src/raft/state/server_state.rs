@@ -3,14 +3,14 @@
 
 use std::collections::HashMap;
 
-use super::{Client, Mode, Peer, Peers, PersistentState, Result, VolatileState};
+use super::{Client, ClusterSet, Mode, Peer, PersistentState, Result, VolatileState};
 
 #[derive(Debug)]
 pub struct State<P> {
     pub id: String,
 
     // Volatile state.
-    pub peers: Peers<P>,
+    pub peers: ClusterSet<P>,
     volatile: VolatileState,
 
     // Persistent state.
@@ -64,7 +64,7 @@ impl<P> State<P> {
     }
 
     pub fn current_leader(&self) -> Option<String> {
-        self.volatile.leader.leader()
+        self.volatile.leader.current_leader()
     }
 }
 
@@ -140,7 +140,7 @@ where
     P: Client + Send + Clone + 'static,
 {
     pub fn new(id: String, peers: HashMap<String, Peer<P>>, db: &sled::Db) -> Result<State<P>> {
-        let peers = Peers::bootstrap(id.clone(), peers, None);
+        let peers = ClusterSet::new(id.clone(), Some(peers));
         let persistent = PersistentState::new(db)?;
         let volatile = VolatileState::default();
         Ok(State {

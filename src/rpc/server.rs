@@ -92,6 +92,7 @@ mod tests {
             &logger,
             &db,
             state_machine,
+            false,
         )
         .expect("Failed to generate new module.");
 

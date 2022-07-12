@@ -42,6 +42,7 @@ where
         logger: &slog::Logger,
         db: &sled::Db,
         state_machine: S,
+        replica: bool,
     ) -> Result<Module<P, S>> {
         let state_machine = Arc::new(state_machine);
         let (submit_tx, submit_rx) = mpsc::channel(2);
@@ -84,7 +85,7 @@ where
         let repo = Repo::new(raft, frontend, cluster);
 
         let leader = Leader::new(&logger, state.clone(), log.clone(), commit_tx, submit_rx);
-        let follower = Follower::new(&logger, state.clone(), heartbeat_rx);
+        let follower = Follower::new(&logger, state.clone(), heartbeat_rx, replica);
         let candidate = Candidate::new(&logger, state.clone(), log.clone());
         Ok(Module {
             logger,
@@ -102,7 +103,7 @@ where
     }
 
     pub fn append_peer(&self, id: String, peer: Peer<P>) {
-        self.state.peers.lock().append(id, peer);
+        self.state.peers.lock().insert(id, peer);
     }
 
     pub fn is_leader(&self) -> bool {
@@ -156,7 +157,7 @@ where
         self.commit_loop();
         self.flush_loop();
         while !self.state.is_dead() {
-            info!(self.logger, "Starting worker!");
+            debug!(self.logger, "Starting worker!");
             self.follower_loop().await;
 
             if self.state.peers.lock().len() < 2 {
@@ -278,6 +279,7 @@ mod tests {
             &logger,
             &db,
             state_machine,
+            false,
         )
         .expect("Failed to generate new module.");
 
