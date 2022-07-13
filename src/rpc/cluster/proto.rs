@@ -14,7 +14,11 @@ tonic::include_proto!("cluster");
 
 impl From<AddRequest> for AddServerRequest<RaftClient<Channel>> {
     fn from(input: AddRequest) -> AddServerRequest<RaftClient<Channel>> {
-        let peer = Peer::voter(input.member.clone());
+        let peer = if input.replica {
+            Peer::replica(input.member.clone())
+        } else {
+            Peer::voter(input.member.clone())
+        };
         AddServerRequest {
             id: input.member,
             replica: input.replica,

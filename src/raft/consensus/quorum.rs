@@ -135,7 +135,9 @@ where
 
             if !resp.success {
                 peer.next_idx -= 1;
-                successes.insert(peer_id.clone(), false);
+                if peer.is_voter() {
+                    successes.insert(peer_id.clone(), false);
+                }
                 continue;
             }
 
