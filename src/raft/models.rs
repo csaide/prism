@@ -3,7 +3,7 @@
 
 use super::{Entry, Peer};
 
-#[derive(Default, Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub enum ElectionResult {
     Success,
     #[default]
@@ -12,7 +12,7 @@ pub enum ElectionResult {
 
 /// An [AppendEntriesRequest] handles both heartbeating (empty entries field), or replicating logs between the
 /// current cluster leader and its followers.
-#[derive(Default, Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct AppendEntriesRequest {
     pub term: u64,
     pub leader_id: String,
@@ -23,14 +23,14 @@ pub struct AppendEntriesRequest {
 }
 
 /// An [AppendEntriesResponse] handles informing a given leader of this followers acceptance of its hearbeat/replication request.
-#[derive(Default, Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct AppendEntriesResponse {
     pub term: u64,
     pub success: bool,
 }
 
 /// A [RequestVoteRequest] handles requesting votes during a given candidates election.
-#[derive(Default, Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct RequestVoteRequest {
     pub term: u64,
     pub candidate_id: String,
@@ -40,7 +40,7 @@ pub struct RequestVoteRequest {
 
 /// A [RequestVoteResponse] handles informing the candidate requesting votes, whether or not this meember
 /// granted its vote or not.
-#[derive(Default, Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct RequestVoteResponse {
     pub term: u64,
     pub vote_granted: bool,
@@ -53,27 +53,27 @@ pub struct AddServerRequest<P> {
     pub peer: Peer<P>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct AddServerResponse {
     pub status: String,
     pub leader_hint: String,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct RemoveServerRequest {
     pub id: String,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct RemoveServerResponse {
     pub status: String,
     pub leader_hint: String,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct ListServerRequest {}
 
-#[derive(Default, Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct ListServerResponse {
     pub term: u64,
     pub voters: Vec<String>,
@@ -81,36 +81,36 @@ pub struct ListServerResponse {
     pub leader: String,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct MutateStateRequest {
     pub client_id: Vec<u8>,
     pub sequence_num: u64,
     pub command: Vec<u8>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct MutateStateResponse {
     pub status: String,
     pub response: Vec<u8>,
     pub leader_hint: String,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct ReadStateRequest {
     pub query: Vec<u8>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct ReadStateResponse {
     pub status: String,
     pub response: Vec<u8>,
     pub leader_hint: String,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct RegisterClientRequest {}
 
-#[derive(Default, Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct RegisterClientResponse {
     pub status: String,
     pub client_id: Vec<u8>,

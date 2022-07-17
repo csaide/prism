@@ -12,7 +12,7 @@ use super::{AppendEntriesRequest, AppendEntriesResponse, Client, Log, Result, St
 pub struct Quorum<P> {
     logger: slog::Logger,
     state: Arc<State<P>>,
-    log: Arc<Log>,
+    log: Log,
     commit_tx: Arc<watch::Sender<()>>,
 }
 
@@ -23,7 +23,7 @@ where
     pub fn new(
         logger: &slog::Logger,
         state: Arc<State<P>>,
-        log: Arc<Log>,
+        log: Log,
         commit_tx: Arc<watch::Sender<()>>,
     ) -> Quorum<P> {
         Quorum {
@@ -56,13 +56,9 @@ where
         saved_term: u64,
         tx: &mpsc::Sender<(usize, String, Result<AppendEntriesResponse>)>,
     ) {
-        for (peer_id, peer) in self
-            .state
-            .peers
-            .lock()
-            .iter()
-            .filter(|(id, _)| **id != self.state.id)
-        {
+        let peers = self.state.peers.lock();
+        let peers = peers.iter();
+        for (peer_id, peer) in peers.filter(|(id, _)| **id != self.state.id) {
             let prev_log_idx = peer.next_idx - 1;
             let mut prev_log_term = 0;
             if prev_log_idx > 0 {
@@ -128,7 +124,8 @@ where
             }
 
             let mut locked_peers = self.state.peers.lock();
-            let mut peer = match locked_peers.get_mut(&peer_id) {
+            let peer = locked_peers.get_mut(&peer_id);
+            let mut peer = match peer {
                 Some(peer) => peer,
                 None => continue,
             };
@@ -216,8 +213,6 @@ mod tests {
 
         let log = Log::new(&db).expect("Failed to open log.");
         log.append_entries(0, entries).expect("Failed to seed log.");
-
-        let log = Arc::new(log);
 
         let id = String::from("leader");
         let state = State::<MockClient>::new(id.clone(), peers, &db)

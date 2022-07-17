@@ -15,7 +15,7 @@ pub struct Module<P, S> {
     logger: slog::Logger,
 
     state: Arc<State<P>>,
-    log: Arc<Log>,
+    log: Log,
     state_machine: Arc<S>,
     watcher: Arc<Watcher>,
 
@@ -54,7 +54,7 @@ where
         let applied_tx = Arc::new(applied_tx);
 
         let logger = logger.new(o!("id" => id.clone()));
-        let log = Arc::new(Log::new(db)?);
+        let log = Log::new(db)?;
         let state = Arc::new(State::new(id, peers, db)?);
         let watcher = Arc::new(Watcher::default());
 

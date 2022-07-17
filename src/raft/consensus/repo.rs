@@ -64,7 +64,7 @@ mod tests {
             .temporary(true)
             .open()
             .expect("Failed to open temp database.");
-        let log = Arc::new(Log::new(&db).expect("Failed to create new Log object."));
+        let log = Log::new(&db).expect("Failed to create new Log object.");
         let state = Arc::new(
             State::<MockClient>::new(id.clone(), peers, &db)
                 .expect("Failed to create new State object."),

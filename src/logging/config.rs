@@ -7,7 +7,7 @@ use super::Level;
 // extern usings
 use structopt::StructOpt;
 
-#[derive(Debug, Clone, StructOpt, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, StructOpt, PartialEq, Eq, PartialOrd)]
 /// Prism logging configuration.
 pub struct Config {
     #[structopt(

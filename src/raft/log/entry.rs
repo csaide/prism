@@ -10,7 +10,7 @@ use super::{Error, Result};
 
 /// A [Command] represents a state mutation command log entry for the state machine associated with a given
 /// raft cluster.
-#[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd)]
 pub struct Command {
     pub term: u64,
     #[serde(with = "serde_bytes")]
@@ -19,7 +19,7 @@ pub struct Command {
 
 /// A [ClusterConfig] represents a clust&er configuration change log entry for the various members of a given
 /// raft cluster.
-#[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd)]
 pub struct ClusterConfig {
     pub term: u64,
     pub voters: Vec<String>,
@@ -27,7 +27,7 @@ pub struct ClusterConfig {
 }
 
 /// An [Entry] represents a single log entry in a given cluster members persistent log.
-#[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd)]
 pub enum Entry {
     #[default]
     None,

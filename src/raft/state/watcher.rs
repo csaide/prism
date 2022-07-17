@@ -25,13 +25,10 @@ impl Watcher {
     }
 
     pub fn command_applied(&self, idx: u64, result: Result<Bytes>) {
-        match self.command_watches.lock().unwrap().remove(&idx) {
-            Some(submit_tx) => {
-                // If we have an error here its because the receiver hung up.
-                // In that case there is nothing for us to do anyway, so just retun.
-                let _ = submit_tx.send(result);
-            }
-            None => {}
+        if let Some(submit_tx) = self.command_watches.lock().unwrap().remove(&idx) {
+            // If we have an error here its because the receiver hung up.
+            // In that case there is nothing for us to do anyway, so just return.
+            let _ = submit_tx.send(result);
         }
     }
 
@@ -42,11 +39,10 @@ impl Watcher {
     }
 
     pub fn registration_applied(&self, idx: u64) {
-        match self.registration_watches.lock().unwrap().remove(&idx) {
-            Some(submit_tx) => {
-                let _ = submit_tx.send(());
-            }
-            None => {}
+        if let Some(submit_tx) = self.registration_watches.lock().unwrap().remove(&idx) {
+            // If we have an error here its because the receiver hung up.
+            // In that case there is nothing for us to do anyway, so just return.
+            let _ = submit_tx.send(());
         }
     }
 
@@ -57,11 +53,10 @@ impl Watcher {
     }
 
     pub fn cluster_config_applied(&self, idx: u64) {
-        match self.cluster_config_watches.lock().unwrap().remove(&idx) {
-            Some(submit_tx) => {
-                let _ = submit_tx.send(());
-            }
-            None => {}
+        if let Some(submit_tx) = self.cluster_config_watches.lock().unwrap().remove(&idx) {
+            // If we have an error here its because the receiver hung up.
+            // In that case there is nothing for us to do anyway, so just return.
+            let _ = submit_tx.send(());
         }
     }
 }

@@ -14,7 +14,7 @@ use super::{Client, Log, State};
 pub struct Leader<P> {
     logger: slog::Logger,
     state: Arc<State<P>>,
-    log: Arc<Log>,
+    log: Log,
     submit_rx: mpsc::Receiver<()>,
     quorum: Quorum<P>,
 }
@@ -26,7 +26,7 @@ where
     pub fn new(
         logger: &slog::Logger,
         state: Arc<State<P>>,
-        log: Arc<Log>,
+        log: Log,
         commit_tx: Arc<watch::Sender<()>>,
         submit_rx: mpsc::Receiver<()>,
     ) -> Leader<P> {

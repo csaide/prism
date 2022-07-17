@@ -25,7 +25,7 @@ pub trait ClusterHandler<P>: Send + Sync + Clone + 'static {
 pub struct Cluster<P> {
     logger: slog::Logger,
     state: Arc<State<P>>,
-    log: Arc<Log>,
+    log: Log,
     watcher: Arc<Watcher>,
     submit_tx: Sender<()>,
 }
@@ -37,7 +37,7 @@ where
     pub fn new(
         logger: &slog::Logger,
         state: Arc<State<P>>,
-        log: Arc<Log>,
+        log: Log,
         watcher: Arc<Watcher>,
         submit_tx: Sender<()>,
     ) -> Cluster<P> {
@@ -327,7 +327,7 @@ mod tests {
         );
         state.set_mode(mode);
 
-        let log = Arc::new(Log::new(&db).expect("Failed to create new persistent Log."));
+        let log = Log::new(&db).expect("Failed to create new persistent Log.");
         let watcher = Arc::new(Watcher::default());
         let (tx, _rx) = mpsc::channel(10);
         let handler = Cluster::new(&logger, state, log, watcher.clone(), tx);

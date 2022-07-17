@@ -23,7 +23,7 @@ pub trait RaftHandler: Send + Sync + 'static {
 pub struct Raft<P> {
     logger: slog::Logger,
     state: Arc<State<P>>,
-    log: Arc<Log>,
+    log: Log,
     heartbeat_tx: Arc<Sender<()>>,
     commit_tx: Arc<Sender<()>>,
 }
@@ -35,7 +35,7 @@ where
     pub fn new(
         logger: &slog::Logger,
         state: Arc<State<P>>,
-        log: Arc<Log>,
+        log: Log,
         heartbeat_tx: Arc<Sender<()>>,
         commit_tx: Arc<Sender<()>>,
     ) -> Raft<P> {
@@ -238,7 +238,7 @@ mod tests {
         let leader = Peer::voter(leader_id.clone());
         state.peers.lock().insert(leader_id, leader);
 
-        let log = Arc::new(Log::new(&db).expect("Failed to create new persistent Log."));
+        let log = Log::new(&db).expect("Failed to create new persistent Log.");
         let (commit_tx, mut commit_rx) = watch::channel(());
         let commit_tx = Arc::new(commit_tx);
         let commit_state = state.clone();

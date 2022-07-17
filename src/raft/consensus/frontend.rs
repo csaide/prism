@@ -29,11 +29,11 @@ pub trait FrontendHandler: Send + Sync + Clone + 'static {
 #[derive(Debug, Clone)]
 pub struct Frontend<P, S> {
     state: Arc<State<P>>,
-    log: Arc<Log>,
+    log: Log,
     watcher: Arc<Watcher>,
     submit_tx: Sender<()>,
     applied_rx: watch::Receiver<()>,
-    quorum: Arc<Quorum<P>>,
+    quorum: Quorum<P>,
     state_machine: Arc<S>,
 }
 
@@ -45,14 +45,14 @@ where
     pub fn new(
         logger: &slog::Logger,
         state: Arc<State<P>>,
-        log: Arc<Log>,
+        log: Log,
         watcher: Arc<Watcher>,
         commit_tx: Arc<watch::Sender<()>>,
         applied_rx: watch::Receiver<()>,
         submit_tx: Sender<()>,
         state_machine: Arc<S>,
     ) -> Frontend<P, S> {
-        let quorum = Arc::new(Quorum::new(logger, state.clone(), log.clone(), commit_tx));
+        let quorum = Quorum::new(logger, state.clone(), log.clone(), commit_tx);
         Frontend {
             state,
             log,
@@ -73,9 +73,7 @@ where
 
         let rx = self.watcher.register_command_watch(idx);
         self.submit_tx.send(()).await?;
-
-        let res = rx.await.map_err(Error::from)?;
-        res
+        rx.await.map_err(Error::from)?
     }
 
     async fn submit_registration(&self, term: u64) -> Result<u64> {
@@ -244,7 +242,7 @@ mod tests {
         );
         state.set_mode(mode);
 
-        let log = Arc::new(Log::new(&db).expect("Failed to create new persistent Log."));
+        let log = Log::new(&db).expect("Failed to create new persistent Log.");
         let watcher = Arc::new(Watcher::default());
         let state_machine = Arc::new(HashState::new(&logger));
         let (applied_tx, applied_rx) = watch::channel(());

@@ -7,7 +7,7 @@ use super::error::{Error, Result};
 // Standard usings
 use std::str::FromStr;
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 /// Set the verbosity of logs printed to the defined handler.
 pub enum Level {
     /// Only print critical errors.

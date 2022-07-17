@@ -12,7 +12,7 @@ pub type Result<T> = result::Result<T, Error>;
 
 /// Represents logging errors based on user configuration or OS
 /// errors while attempting to configure log handlers.
-#[derive(Error, Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Error, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub enum Error {
     /// Handles errors for undefined or invalid log level conversions.
     #[error("invalid level specified: {level}")]
