@@ -11,14 +11,14 @@ use super::{Client, ElectionResult, Log, RequestVoteRequest, RequestVoteResponse
 pub struct Candidate<P> {
     logger: slog::Logger,
     state: Arc<State<P>>,
-    log: Arc<Log>,
+    log: Log,
 }
 
 impl<P> Candidate<P>
 where
     P: Client + Send + Clone + 'static,
 {
-    pub fn new(logger: &slog::Logger, state: Arc<State<P>>, log: Arc<Log>) -> Candidate<P> {
+    pub fn new(logger: &slog::Logger, state: Arc<State<P>>, log: Log) -> Candidate<P> {
         Candidate {
             logger: logger.new(o!("module" => "candidate")),
             state,
@@ -50,13 +50,9 @@ where
             term: saved_term,
         };
 
-        for (_, peer) in self
-            .state
-            .peers
-            .lock()
-            .voters()
-            .filter(|(id, _)| self.state.id != **id)
-        {
+        let peers = self.state.peers.lock();
+        let voters = peers.voters();
+        for (_, peer) in voters.filter(|(id, _)| self.state.id != **id) {
             let mut cli = peer.clone();
             let req = request.clone();
             let tx = tx.clone();
@@ -176,7 +172,6 @@ mod tests {
         let logger = logging::noop();
 
         let log = Log::new(&db).expect("Failed to open log.");
-        let log = Arc::new(log);
 
         let peer1 = mock_client_vote_false(1);
 
@@ -202,7 +197,6 @@ mod tests {
         let logger = logging::noop();
 
         let log = Log::new(&db).expect("Failed to open log.");
-        let log = Arc::new(log);
 
         let peer1 = mock_client_vote_false(1);
         let peer2 = mock_client_vote_true();
@@ -236,7 +230,6 @@ mod tests {
         let logger = logging::noop();
 
         let log = Log::new(&db).expect("Failed to open log.");
-        let log = Arc::new(log);
 
         let peer1 = mock_client_vote_false(1000);
         let mut peers = HashMap::default();
@@ -265,7 +258,6 @@ mod tests {
         let logger = logging::noop();
 
         let log = Log::new(&db).expect("Failed to open log.");
-        let log = Arc::new(log);
 
         let peer1 = mock_client_vote_failed();
         let mut peers = HashMap::default();

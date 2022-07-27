@@ -15,7 +15,7 @@ pub struct Module<P, S> {
     logger: slog::Logger,
 
     state: Arc<State<P>>,
-    log: Arc<Log>,
+    log: Log,
     state_machine: Arc<S>,
     watcher: Arc<Watcher>,
 
@@ -45,6 +45,7 @@ where
         replica: bool,
     ) -> Result<Module<P, S>> {
         let state_machine = Arc::new(state_machine);
+
         let (submit_tx, submit_rx) = mpsc::channel(2);
         let (heartbeat_tx, heartbeat_rx) = watch::channel(());
         let heartbeat_tx = Arc::new(heartbeat_tx);
@@ -54,7 +55,7 @@ where
         let applied_tx = Arc::new(applied_tx);
 
         let logger = logger.new(o!("id" => id.clone()));
-        let log = Arc::new(Log::new(db)?);
+        let log = Log::new(db)?;
         let state = Arc::new(State::new(id, peers, db)?);
         let watcher = Arc::new(Watcher::default());
 

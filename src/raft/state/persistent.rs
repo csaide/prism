@@ -3,31 +3,35 @@
 
 use super::{Error, Result};
 
-#[derive(Debug)]
+const TREE: &str = "config";
+const VOTED_FOR: &str = "voted_for";
+const CURRENT_TERM: &str = "current_term";
+
+#[derive(Debug, Clone)]
 pub struct PersistentState {
     tree: sled::Tree,
 }
 
 impl PersistentState {
     pub fn new(db: &sled::Db) -> Result<PersistentState> {
-        let tree = db.open_tree("config")?;
-        Ok(PersistentState { tree })
+        db.open_tree(TREE)
+            .map(PersistentState::from)
+            .map_err(Error::from)
     }
 
     pub fn get_voted_for(&self) -> Result<Option<String>> {
-        match self.tree.get("voted_for")? {
-            Some(ivec) => bincode::deserialize(&ivec).map_err(|e| Error::Serialize(e.to_string())),
-            None => Ok(None),
-        }
+        self.tree
+            .get(VOTED_FOR)?
+            .map_or(Ok(None), |ivec| {
+                bincode::deserialize::<Option<String>>(&ivec)
+            })
+            .map_err(Error::from)
     }
 
     pub fn set_voted_for(&self, voted_for: Option<String>) -> Result<()> {
-        self.tree.insert(
-            "voted_for",
-            bincode::serialize(&voted_for).map_err(|e| Error::Serialize(e.to_string()))?,
-        )?;
-        self.tree.flush()?;
-        Ok(())
+        let voted_for = bincode::serialize(&voted_for)?;
+        self.tree.insert(VOTED_FOR, voted_for)?;
+        self.tree.flush().map(|_| ()).map_err(Error::from)
     }
 
     pub fn matches_term(&self, term: u64) -> Result<bool> {
@@ -35,36 +39,29 @@ impl PersistentState {
     }
 
     pub fn get_current_term(&self) -> Result<u64> {
-        match self.tree.get("current_term")? {
-            Some(ivec) => ivec
-                .as_ref()
+        self.tree.get(CURRENT_TERM)?.map_or(Ok(1), |ivec| {
+            ivec.as_ref()
                 .try_into()
                 .map(u64::from_be_bytes)
-                .map_err(Error::from),
-            None => Ok(1),
-        }
+                .map_err(Error::from)
+        })
     }
 
     pub fn set_current_term(&self, term: u64) -> Result<()> {
-        self.tree
-            .insert("current_term", &term.to_be_bytes())
-            .map(|_| ())
-            .map_err(Error::from)
+        self.tree.insert(CURRENT_TERM, &term.to_be_bytes())?;
+        self.tree.flush().map(|_| ()).map_err(Error::from)
     }
 
     pub fn incr_current_term(&self) -> Result<u64> {
         self.tree
-            .update_and_fetch("current_term", |old: Option<&[u8]>| -> Option<Vec<u8>> {
-                let number = match old {
-                    Some(bytes) => {
-                        let array: [u8; 8] = bytes.try_into().unwrap();
-                        let number = u64::from_be_bytes(array);
-                        number + 1
-                    }
-                    None => 1,
-                };
-
-                Some(number.to_be_bytes().to_vec())
+            .update_and_fetch(CURRENT_TERM, |old: Option<&[u8]>| -> Option<Vec<u8>> {
+                let new = old
+                    .map_or(1, |ivec| {
+                        ivec.as_ref().try_into().map(u64::from_be_bytes).unwrap() + 1
+                    })
+                    .to_be_bytes()
+                    .to_vec();
+                Some(new)
             })?
             .map(|ivec| {
                 ivec.as_ref()
@@ -73,6 +70,12 @@ impl PersistentState {
                     .map_err(Error::from)
             })
             .unwrap_or(Ok(1))
+    }
+}
+
+impl From<sled::Tree> for PersistentState {
+    fn from(tree: sled::Tree) -> PersistentState {
+        PersistentState { tree }
     }
 }
 

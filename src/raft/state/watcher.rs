@@ -15,6 +15,7 @@ pub struct Watcher {
     command_watches: LockedUintMap<oneshot::Sender<Result<Bytes>>>,
     cluster_config_watches: LockedUintMap<oneshot::Sender<()>>,
     registration_watches: LockedUintMap<oneshot::Sender<()>>,
+    read_watches: Mutex<Vec<oneshot::Sender<()>>>,
 }
 
 impl Watcher {
@@ -25,13 +26,10 @@ impl Watcher {
     }
 
     pub fn command_applied(&self, idx: u64, result: Result<Bytes>) {
-        match self.command_watches.lock().unwrap().remove(&idx) {
-            Some(submit_tx) => {
-                // If we have an error here its because the receiver hung up.
-                // In that case there is nothing for us to do anyway, so just retun.
-                let _ = submit_tx.send(result);
-            }
-            None => {}
+        if let Some(submit_tx) = self.command_watches.lock().unwrap().remove(&idx) {
+            // If we have an error here its because the receiver hung up.
+            // In that case there is nothing for us to do anyway, so just return.
+            let _ = submit_tx.send(result);
         }
     }
 
@@ -42,11 +40,10 @@ impl Watcher {
     }
 
     pub fn registration_applied(&self, idx: u64) {
-        match self.registration_watches.lock().unwrap().remove(&idx) {
-            Some(submit_tx) => {
-                let _ = submit_tx.send(());
-            }
-            None => {}
+        if let Some(submit_tx) = self.registration_watches.lock().unwrap().remove(&idx) {
+            // If we have an error here its because the receiver hung up.
+            // In that case there is nothing for us to do anyway, so just return.
+            let _ = submit_tx.send(());
         }
     }
 
@@ -57,11 +54,27 @@ impl Watcher {
     }
 
     pub fn cluster_config_applied(&self, idx: u64) {
-        match self.cluster_config_watches.lock().unwrap().remove(&idx) {
-            Some(submit_tx) => {
-                let _ = submit_tx.send(());
-            }
-            None => {}
+        if let Some(submit_tx) = self.cluster_config_watches.lock().unwrap().remove(&idx) {
+            // If we have an error here its because the receiver hung up.
+            // In that case there is nothing for us to do anyway, so just return.
+            let _ = submit_tx.send(());
+        }
+    }
+
+    pub fn register_read_watch(&self) -> oneshot::Receiver<()> {
+        let (tx, rx) = oneshot::channel();
+        self.read_watches.lock().unwrap().push(tx);
+        rx
+    }
+
+    pub fn read_ok(&self) {
+        let mut readers = self.read_watches.lock().unwrap();
+        let readers = readers.drain(..);
+
+        for reader in readers {
+            // If we have an error here its because the receiver hung up.
+            // In that case there is nothing for us to do anyway, so just continue.
+            let _ = reader.send(());
         }
     }
 }

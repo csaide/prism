@@ -27,8 +27,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build_server(true)
             .type_attribute(
                 ".raft",
-                "#[derive(serde_derive::Serialize, serde_derive::Deserialize)]",
+                "#[derive(serde_derive::Serialize, serde_derive::Deserialize, Eq)]",
             )
+            .type_attribute(".frontend", "#[derive(Eq)]")
+            .type_attribute(".cluster", "#[derive(Eq)]")
             .field_attribute(".raft.Command.data", "#[serde(with = \"serde_bytes\")]")
             .field_attribute(".raft.Snapshot.data", "#[serde(with = \"serde_bytes\")]")
             .file_descriptor_set_path(out_dir.join(descriptor_name))

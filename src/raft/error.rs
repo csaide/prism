@@ -95,6 +95,12 @@ impl From<TransactionError<Error>> for Error {
     }
 }
 
+impl From<Box<bincode::ErrorKind>> for Error {
+    fn from(e: Box<bincode::ErrorKind>) -> Self {
+        Error::Serialize(e.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::error::Error;

@@ -8,7 +8,7 @@ use super::{AppendEntriesRequest, AppendEntriesResponse, Client, Log, Peer, Resu
 pub struct Syncer<P> {
     logger: slog::Logger,
     state: Arc<State<P>>,
-    log: Arc<Log>,
+    log: Log,
     peer: Peer<P>,
 }
 
@@ -16,12 +16,7 @@ impl<P> Syncer<P>
 where
     P: Client + Send + Clone + 'static,
 {
-    pub fn new(
-        logger: &slog::Logger,
-        state: Arc<State<P>>,
-        log: Arc<Log>,
-        peer: Peer<P>,
-    ) -> Syncer<P> {
+    pub fn new(logger: &slog::Logger, state: Arc<State<P>>, log: Log, peer: Peer<P>) -> Syncer<P> {
         Syncer {
             logger: logger.clone(),
             state,

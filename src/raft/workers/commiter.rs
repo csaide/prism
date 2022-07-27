@@ -10,7 +10,7 @@ use super::{Client, Entry, Log, State, StateMachine, Watcher};
 pub struct Commiter<P, S> {
     logger: slog::Logger,
     state: Arc<State<P>>,
-    log: Arc<Log>,
+    log: Log,
     state_machine: Arc<S>,
     commit_rx: watch::Receiver<()>,
     applied_tx: Arc<watch::Sender<()>>,
@@ -25,7 +25,7 @@ where
     pub fn new(
         logger: &slog::Logger,
         state: Arc<State<P>>,
-        log: Arc<Log>,
+        log: Log,
         state_machine: Arc<S>,
         commit_rx: watch::Receiver<()>,
         applied_tx: Arc<watch::Sender<()>>,

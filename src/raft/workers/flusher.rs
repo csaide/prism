@@ -9,7 +9,7 @@ use crate::raft::{Client, Log, State};
 
 pub struct Flusher<P> {
     logger: slog::Logger,
-    log: Arc<Log>,
+    log: Log,
     state: Arc<State<P>>,
 }
 
@@ -17,7 +17,7 @@ impl<P> Flusher<P>
 where
     P: Client + Clone,
 {
-    pub fn new(logger: &slog::Logger, log: Arc<Log>, state: Arc<State<P>>) -> Flusher<P> {
+    pub fn new(logger: &slog::Logger, log: Log, state: Arc<State<P>>) -> Flusher<P> {
         Flusher {
             logger: logger.new(o!("module" => "flusher")),
             log,

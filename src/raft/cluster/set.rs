@@ -52,7 +52,9 @@ where
 
     pub fn idx_matches(&self, idx: u64) -> bool {
         let mut matches = 1;
-        for (_, peer) in self.voters() {
+
+        let voters = self.voters();
+        for (_, peer) in voters {
             if peer.match_idx >= idx {
                 matches += 1;
             }
