@@ -22,3 +22,4 @@ pub mod prismd;
 pub mod raft;
 /// gRPC implementation details.
 pub mod rpc;
+pub mod temp;

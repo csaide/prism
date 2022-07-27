@@ -45,6 +45,7 @@ where
         replica: bool,
     ) -> Result<Module<P, S>> {
         let state_machine = Arc::new(state_machine);
+
         let (submit_tx, submit_rx) = mpsc::channel(2);
         let (heartbeat_tx, heartbeat_rx) = watch::channel(());
         let heartbeat_tx = Arc::new(heartbeat_tx);

@@ -15,6 +15,7 @@ pub struct Watcher {
     command_watches: LockedUintMap<oneshot::Sender<Result<Bytes>>>,
     cluster_config_watches: LockedUintMap<oneshot::Sender<()>>,
     registration_watches: LockedUintMap<oneshot::Sender<()>>,
+    read_watches: Mutex<Vec<oneshot::Sender<()>>>,
 }
 
 impl Watcher {
@@ -57,6 +58,23 @@ impl Watcher {
             // If we have an error here its because the receiver hung up.
             // In that case there is nothing for us to do anyway, so just return.
             let _ = submit_tx.send(());
+        }
+    }
+
+    pub fn register_read_watch(&self) -> oneshot::Receiver<()> {
+        let (tx, rx) = oneshot::channel();
+        self.read_watches.lock().unwrap().push(tx);
+        rx
+    }
+
+    pub fn read_ok(&self) {
+        let mut readers = self.read_watches.lock().unwrap();
+        let readers = readers.drain(..);
+
+        for reader in readers {
+            // If we have an error here its because the receiver hung up.
+            // In that case there is nothing for us to do anyway, so just continue.
+            let _ = reader.send(());
         }
     }
 }

@@ -43,6 +43,7 @@ where
         !self.replica
     }
 
+    #[cfg(test)]
     pub fn with_client(id: String, client: C) -> Peer<C> {
         Peer {
             id,

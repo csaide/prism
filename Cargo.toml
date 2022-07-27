@@ -10,6 +10,7 @@ bincode = "1.3"
 bytes = "1.1"
 exitcode = "1.1"
 futures = "0.3"
+lazy_static = "1.4"
 prost = "0.10"
 prost-types = "0.10"
 rand = "0.8"
@@ -30,12 +31,14 @@ tonic = "0.7"
 tonic-reflection = "0.4"
 tonic-health = "0.6"
 uuid = { version = "1.1", features = ["v4"] }
+memmap = { version = "0.7" }
+libc = "0.2"
 
 [dev-dependencies]
 mockall = "0.11"
 rstest = "0.15"
 tokio-test = "0.4"
-lazy_static = "1.4"
+criterion = "0.3"
 
 [build-dependencies]
 tonic-build = "0.7"
@@ -55,3 +58,11 @@ name = "prismctl"
 path = "src/bin/prismctl.rs"
 test = false
 bench = false
+
+[[bench]]
+name = "log_bench"
+harness = false
+
+[[bench]]
+name = "block_bench"
+harness = false
